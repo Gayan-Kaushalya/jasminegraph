@@ -149,13 +149,13 @@ def test(host, port, check_adgr, check_rmgr, workers):
             logging.info(f'Adding graphs with {workers} workers')
             send_and_expect_response(sock, 'adgr', ADGR, SEND, exit_on_failure=True)
             send_and_expect_response(
-                sock, 'adgr', f"twitter|/tmp/jasminegraph/graphs/powergrid.dl".encode("utf-8"), DONE, exit_on_failure=True)
+                sock, 'adgr', f"powergrid|/tmp/jasminegraph/graphs/powergrid.dl".encode("utf-8"), DONE, exit_on_failure=True)
 
 
             print()
             logging.info('Testing lst after adgr')
             send_and_expect_response(sock, 'lst after adgr', LIST,
-                                    b'|1|twitter|/tmp/jasminegraph/graphs/powergrid.dl/.txt|op|')
+                                    b'|1|powergrid|/tmp/jasminegraph/graphs/powergrid.dl|op|')
 
         print()
         logging.info('Testing ecnt')
