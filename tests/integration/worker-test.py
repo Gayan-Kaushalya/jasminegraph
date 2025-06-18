@@ -133,6 +133,8 @@ def test(host, port, check_adgr, check_rmgr, workers):
     """Test the JasmineGraph server by sending a series of commands and checking the responses."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         logging.info('Connecting to JasmineGraph with %d workers', workers)
+        
+        time.sleep(5)  # Wait for the server to start properly
 
         try:
             sock.connect((host, port))
