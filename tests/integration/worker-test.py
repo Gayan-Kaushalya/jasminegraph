@@ -214,7 +214,7 @@ if __name__ == '__main__':
     # Initial cleanup before starting the first container
     stop_and_remove_docker_container()
 
-    docker_command = ['docker', 'run', 
+    docker_command = ['docker', 'run', '--name', 'jasminegraph',
                       '-v', '/var/run/docker.sock:/var/run/docker.sock:rw',
                       '-v', '/root/.ssh:/home/user/.ssh',
                       '-v', '/tmp:/tmp',
