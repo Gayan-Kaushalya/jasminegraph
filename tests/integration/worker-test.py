@@ -134,7 +134,7 @@ def test(host, port, check_adgr, check_rmgr, workers):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         logging.info('Connecting to JasmineGraph with %d workers', workers)
         
-        time.sleep(5 + workers* 2)  
+        time.sleep(15 + workers* 2)  
 
         try:
             sock.connect((host, port))
