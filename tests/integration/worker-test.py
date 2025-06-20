@@ -50,7 +50,7 @@ LINE_END = b'\r\n'
 IDD = b'idd'
 ODD = b'odd'
 
-num_workers = [16, 8, 4, 2]
+num_workers = [2, 4, 8, 16]
 
 
 def stop_and_remove_docker_container():
@@ -233,7 +233,7 @@ if __name__ == '__main__':
     try:
         current_workers_to_test = number
         # Run the first test case
-        logging.info(f"Starting initial test with {current_workers_to_test} workers.")
+        logging.info("Starting initial test with %s workers", str(current_workers_to_test))
         process = subprocess.Popen(docker_command + ['--WORKERS', str(current_workers_to_test)],
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         wait_for_port(HOST, PORT, timeout=60) # Increased timeout for initial boot
@@ -244,21 +244,21 @@ if __name__ == '__main__':
         for x in num_workers:
             if x != number:
                 current_workers_to_test = x
-                logging.info(f"Starting subsequent test with {current_workers_to_test} workers.")
+                logging.info("Starting subsequent test with %s workers.", current_workers_to_test)
                 stop_and_remove_docker_container() # Ensure clean slate before new run
                 process = subprocess.Popen(docker_command + ['--WORKERS', str(current_workers_to_test)],
                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 wait_for_port(HOST, PORT, timeout=60) # Increased timeout
 
-                if number == 2:
-                    if current_workers_to_test in [16, 8]: # Example: check_adgr only for first few
-                        test(HOST, PORT, check_adgr=False, check_rmgr=False, workers=current_workers_to_test)
-                    else:
+                if number != 16:
+                    if current_workers_to_test == 16:
                         test(HOST, PORT, check_adgr=False, check_rmgr=True, workers=current_workers_to_test)
+                    else:
+                        test(HOST, PORT, check_adgr=False, check_rmgr=False, workers=current_workers_to_test)
                     stop_and_remove_docker_container() # Cleanup after each test run
                 else:
-                    if number != 2:
-                        test(HOST, PORT, check_adgr=True, check_rmgr=False, workers=current_workers_to_test)
+                    if number != 8:
+                        test(HOST, PORT, check_adgr=False, check_rmgr=False, workers=current_workers_to_test)
                     else:
                         test(HOST, PORT, check_adgr=False, check_rmgr=True, workers=current_workers_to_test)
                     stop_and_remove_docker_container()
