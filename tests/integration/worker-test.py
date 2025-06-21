@@ -257,7 +257,7 @@ if __name__ == '__main__':
                         test(HOST, PORT, check_adgr=False, check_rmgr=False, workers=current_workers_to_test)
                     stop_and_remove_docker_container() # Cleanup after each test run
                 else:
-                    if number != 8:
+                    if current_workers_to_test != 8:
                         test(HOST, PORT, check_adgr=False, check_rmgr=False, workers=current_workers_to_test)
                     else:
                         test(HOST, PORT, check_adgr=False, check_rmgr=True, workers=current_workers_to_test)
