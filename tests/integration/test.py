@@ -313,7 +313,7 @@ def test(host, port):
                                  b' This file needs to be in some directory location ' +
                                  b'that is accessible for JasmineGraph master',
                                  exit_on_failure=True)
-        send_and_expect_response(sock, 'adhdfs', b'/tmp/jasminegrgaph/hadoop.txt',
+        send_and_expect_response(sock, 'adhdfs', b'/tmp/jasminegraph/hadoop.txt',
                                  b'HDFS file path: ',
                                  exit_on_failure=True)
         send_and_expect_response(sock, 'adhdfs', b'/graphs/prop.txt',
@@ -344,7 +344,7 @@ def test(host, port):
                                  b' This file needs to be in some directory location ' +
                                  b'that is accessible for JasmineGraph master',
                                  exit_on_failure=True)
-        send_and_expect_response(sock, 'adhdfs', b'/tmp/jasminegrgaph/hadoop.txt',
+        send_and_expect_response(sock, 'adhdfs', b'/tmp/jasminegraph/hadoop.txt',
                                  b'HDFS file path: ',
                                  exit_on_failure=True)
         send_and_expect_response(sock, 'adhdfs', b'/graphs/prop.txt',
@@ -365,7 +365,7 @@ def test(host, port):
                                  b' This file needs to be in some directory location ' +
                                  b'that is accessible for JasmineGraph master',
                                  exit_on_failure=True)
-        send_and_expect_response(sock, 'adhdfs', b'/tmp/jasminegrgaph/hadoop.txt',
+        send_and_expect_response(sock, 'adhdfs', b'/tmp/jasminegraph/hadoop.txt',
                                  b'HDFS file path: ',
                                  exit_on_failure=True)
         send_and_expect_response(sock, 'adhdfs', b'/graphs/large.txt',
