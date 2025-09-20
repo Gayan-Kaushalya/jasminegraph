@@ -232,7 +232,7 @@ def test(host, port):
         print()
         logging.info('Testing lst after adgr-cust')
         send_and_expect_response(sock, 'lst after adgr-cust', LIST,
-                                 b'|1|powergrid|/tmp/data/powergrid.dl|op|' + LINE_END +
+                                 b'|1|powergrid|/tmp/jasminegraph/graphs/powergrid.dl|op|' + LINE_END +
                                  b'|2|cora|/tmp/cora/cora.cites|op|')
 
         print()
