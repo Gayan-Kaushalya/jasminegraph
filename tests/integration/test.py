@@ -225,15 +225,15 @@ def test(host, port):
                                  b'(optional)<attribute data type: int8. int16, int32 or float>',
                                  exit_on_failure=True)
         send_and_expect_response(sock, 'adgr-cust',
-                                 b'cora|/var/tmp/data/cora/cora.cites|' +
-                                 b'/var/tmp/data/cora/cora.content',
+                                 b'cora|/tmp/cora/cora.cites|' +
+                                 b'/tmp/cora/cora.content',
                                  DONE, exit_on_failure=True)
 
         print()
         logging.info('Testing lst after adgr-cust')
         send_and_expect_response(sock, 'lst after adgr-cust', LIST,
-                                 b'|1|powergrid|/var/tmp/data/powergrid.dl|op|' + LINE_END +
-                                 b'|2|cora|/var/tmp/data/cora/cora.cites|op|')
+                                 b'|1|powergrid|/tmp/data/powergrid.dl|op|' + LINE_END +
+                                 b'|2|cora|/tmp/cora/cora.cites|op|')
 
         print()
         logging.info('Testing merge')
