@@ -177,12 +177,12 @@ def test(host, port):
         logging.info('Testing adgr')
         send_and_expect_response(sock, 'adgr', ADGR, SEND, exit_on_failure=True)
         send_and_expect_response(
-            sock, 'adgr', b'powergrid|/var/tmp/data/powergrid.dl', DONE, exit_on_failure=True)
+            sock, 'adgr', b'powergrid|tmp/jasminegraph/graphs/powergrid.dl', DONE, exit_on_failure=True)
 
         print()
         logging.info('Testing lst after adgr')
         send_and_expect_response(sock, 'lst after adgr', LIST,
-                                 b'|1|powergrid|/var/tmp/data/powergrid.dl|op|')
+                                 b'|1|powergrid|tmp/jasminegraph/graphs/powergrid.dl|op|')
 
         print()
         logging.info('Testing ecnt')
@@ -260,7 +260,7 @@ def test(host, port):
         print()
         logging.info('Testing lst after rmgr')
         send_and_expect_response(sock, 'lst after rmgr',
-                                 LIST, b'|1|powergrid|/var/tmp/data/powergrid.dl|op|')
+                                 LIST, b'|1|powergrid|tmp/jasminegraph/graphs/powergrid.dl|op|')
 
         send_and_expect_response(sock, 'rmgr', RMGR, SEND)
         send_and_expect_response(sock, 'rmgr', b'1', DONE)
@@ -276,10 +276,10 @@ def test(host, port):
                                  b' This file needs to be in some directory location ' +
                                  b'that is accessible for JasmineGraph master',
                                  exit_on_failure=True)
-        send_and_expect_response(sock, 'adhdfs', b'/var/tmp/config/hdfs_config.txt',
+        send_and_expect_response(sock, 'adhdfs', b'/tmp/jasminegraph/hadoop.txt',
                                  b'HDFS file path: ',
                                  exit_on_failure=True)
-        send_and_expect_response(sock, 'adhdfs', b'/home/powergrid.dl',
+        send_and_expect_response(sock, 'adhdfs', b'/graphs/powergrid.dl',
                                  b'Is this an edge list type graph(y/n)?',
                                  exit_on_failure=True)
         send_and_expect_response(sock, 'adhdfs', b'y',
@@ -290,7 +290,7 @@ def test(host, port):
         print()
         logging.info('Testing lst after adhdfs')
         send_and_expect_response(sock, 'lst after adhdfs', LIST,
-                                 b'|1|/home/powergrid.dl|hdfs:/home/powergrid.dl|op|',
+                                 b'|1|/graphs/powergrid.dl|hdfs:/graphs/powergrid.dl|op|',
                                  exit_on_failure=True)
 
         print()
@@ -313,10 +313,10 @@ def test(host, port):
                                  b' This file needs to be in some directory location ' +
                                  b'that is accessible for JasmineGraph master',
                                  exit_on_failure=True)
-        send_and_expect_response(sock, 'adhdfs', b'/var/tmp/config/hdfs_config.txt',
+        send_and_expect_response(sock, 'adhdfs', b'/tmp/jasminegrgaph/hadoop.txt',
                                  b'HDFS file path: ',
                                  exit_on_failure=True)
-        send_and_expect_response(sock, 'adhdfs', b'/home/graph_with_properties.txt',
+        send_and_expect_response(sock, 'adhdfs', b'/graphs/prop.txt',
                                  b'Is this an edge list type graph(y/n)?',
                                  exit_on_failure=True)
         send_and_expect_response(sock, 'adhdfs', b'n',
@@ -344,10 +344,10 @@ def test(host, port):
                                  b' This file needs to be in some directory location ' +
                                  b'that is accessible for JasmineGraph master',
                                  exit_on_failure=True)
-        send_and_expect_response(sock, 'adhdfs', b'/var/tmp/config/hdfs_config.txt',
+        send_and_expect_response(sock, 'adhdfs', b'/tmp/jasminegrgaph/hadoop.txt',
                                  b'HDFS file path: ',
                                  exit_on_failure=True)
-        send_and_expect_response(sock, 'adhdfs', b'/home/graph_with_properties.txt',
+        send_and_expect_response(sock, 'adhdfs', b'/graphs/prop.txt',
                                  b'Is this an edge list type graph(y/n)?',
                                  exit_on_failure=True)
         send_and_expect_response(sock, 'adhdfs', b'n',
@@ -365,10 +365,10 @@ def test(host, port):
                                  b' This file needs to be in some directory location ' +
                                  b'that is accessible for JasmineGraph master',
                                  exit_on_failure=True)
-        send_and_expect_response(sock, 'adhdfs', b'/var/tmp/config/hdfs_config.txt',
+        send_and_expect_response(sock, 'adhdfs', b'/tmp/jasminegrgaph/hadoop.txt',
                                  b'HDFS file path: ',
                                  exit_on_failure=True)
-        send_and_expect_response(sock, 'adhdfs', b'/home/graph_with_properties_large.txt',
+        send_and_expect_response(sock, 'adhdfs', b'/graphs/large.txt',
                                  b'Is this an edge list type graph(y/n)?',
                                  exit_on_failure=True)
         send_and_expect_response(sock, 'adhdfs', b'n',
