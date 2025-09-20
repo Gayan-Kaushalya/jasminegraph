@@ -177,12 +177,12 @@ def test(host, port):
         logging.info('Testing adgr')
         send_and_expect_response(sock, 'adgr', ADGR, SEND, exit_on_failure=True)
         send_and_expect_response(
-            sock, 'adgr', b'powergrid|tmp/jasminegraph/graphs/powergrid.dl', DONE, exit_on_failure=True)
+            sock, 'adgr', b'powergrid|/tmp/jasminegraph/graphs/powergrid.dl', DONE, exit_on_failure=True)
 
         print()
         logging.info('Testing lst after adgr')
         send_and_expect_response(sock, 'lst after adgr', LIST,
-                                 b'|1|powergrid|tmp/jasminegraph/graphs/powergrid.dl|op|')
+                                 b'|1|powergrid|/tmp/jasminegraph/graphs/powergrid.dl|op|')
 
         print()
         logging.info('Testing ecnt')
@@ -260,7 +260,7 @@ def test(host, port):
         print()
         logging.info('Testing lst after rmgr')
         send_and_expect_response(sock, 'lst after rmgr',
-                                 LIST, b'|1|powergrid|tmp/jasminegraph/graphs/powergrid.dl|op|')
+                                 LIST, b'|1|powergrid|/tmp/jasminegraph/graphs/powergrid.dl|op|')
 
         send_and_expect_response(sock, 'rmgr', RMGR, SEND)
         send_and_expect_response(sock, 'rmgr', b'1', DONE)
