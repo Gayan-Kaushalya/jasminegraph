@@ -36,7 +36,7 @@ limitations under the License.
 #include "../../metadb/SQLiteDBInterface.h"
 #include "../../util/Utils.h"
 #include "RDFParser.h"
-#include "metis.h"
+#include "../DynamicScalingPartitioner.h"
 
 using std::string;
 

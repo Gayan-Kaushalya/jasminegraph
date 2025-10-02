@@ -202,107 +202,78 @@ int MetisPartitioner::constructMetisFormat(string graph_type) {
 }
 
 std::vector<std::map<int, std::string>> MetisPartitioner::partitioneWithGPMetis(string partitionCount) {
-    partitioner_logger.log("Partitioning with gpmetis", "info");
+    partitioner_logger.log("Partitioning with dynamic scaling approach", "info");
     if (partitionCount != "") {
         nParts = atoi(partitionCount.c_str());
     } else {
         partitioner_logger.log("Using the default partition count " + partitionCount, "info");
     }
 
-    char buffer[128];
-    std::string result = "";
-    string metisCommand = "gpmetis " + this->outputFilePath + "/grf " + to_string(this->nParts) + " 2>&1";
-    partitioner_logger.log("metisCommand " + metisCommand, "info");
-
-    FILE *input = popen(metisCommand.c_str(), "r");
-    if (input) {
-        // read the input
-        while (!feof(input)) {
-            if (fgets(buffer, 128, input) != NULL) {
-                result.append(buffer);
-            }
+    // Build Graph from graphEdgeMap to include all edges (including multiples if any)
+    Graph graph;
+    for (const auto& pair : graphEdgeMap) {
+        int u = pair.first;
+        const auto& neighbors = pair.second;
+        for (int v : neighbors) {
+            graph[std::to_string(u)].push_back(std::to_string(v));
         }
-        pclose(input);
-        partitioner_logger.log(result, "info");
-        if (!result.empty() && result.find("Premature") != std::string::npos) {
-            vertexCount -= 1;
-            string newHeader = std::to_string(vertexCount) + ' ' + std::to_string(edgeCountForMetis);
-            // string command = "sed -i \"1s/.*/" + newHeader +"/\" /tmp/grf";
-            string command = "sed -i \"1s/.*/" + newHeader + "/\" " + this->outputFilePath + "/grf";
-            const char *commandStr = command.c_str();
-            pid_t child = fork();
-            if (child == 0) {
-                execl("/bin/sh", "sh", "-c", commandStr, nullptr);
-                _exit(1);
-            }
-            partitioneWithGPMetis(to_string(nParts));
-        } else if (!result.empty() && result.find("out of bounds") != std::string::npos) {
-            vertexCount += 1;
-            string newHeader = std::to_string(vertexCount) + ' ' + std::to_string(edgeCountForMetis);
-            // string command = "sed -i \"1s/.*/" + newHeader +"/\" /tmp/grf";
-            string command = "sed -i \"1s/.*/" + newHeader + "/\" " + this->outputFilePath + "/grf";
-            const char *commandStr = command.c_str();
-            pid_t child = fork();
-            if (child == 0) {
-                execl("/bin/sh", "sh", "-c", commandStr, nullptr);
-                _exit(1);
-            }
-            partitioneWithGPMetis(to_string(nParts));
-            // However, I only found
-        } else if (!result.empty() && result.find("However, I only found") != std::string::npos) {
-            string firstDelimiter = "I only found";
-            string secondDelimite = "edges in the file";
-            unsigned first = result.find(firstDelimiter);
-            unsigned last = result.find(secondDelimite);
-            string newEdgeSize =
-                result.substr(first + firstDelimiter.length() + 1, last - (first + firstDelimiter.length()) - 2);
-            string newHeader = std::to_string(vertexCount) + ' ' + newEdgeSize;
-            string command = "sed -i \"1s/.*/" + newHeader + "/\" " + this->outputFilePath + "/grf";
-            const char *commandStr = command.c_str();
-            pid_t child = fork();
-            if (child == 0) {
-                execl("/bin/sh", "sh", "-c", commandStr, nullptr);
-                _exit(1);
-            }
-            partitioneWithGPMetis(to_string(nParts));
-        } else if (!result.empty() && result.find("Timing Information") != std::string::npos) {
-            std::string line;
-            string fileName = this->outputFilePath + "/grf.part." + to_string(this->nParts);
-            std::ifstream infile(fileName);
-            int counter = smallestVertex;
-            std::map<int, int> partIndex;
-            while (std::getline(infile, line)) {
-                std::istringstream iss(line);
-                int a;
-                if (!(iss >> a)) {
-                    break;
-                } else {
-                    partIndex[counter] = a;
-                    counter++;
-                }
-            }
-            partitioner_logger.log("Done partitioning with gpmetis", "info");
-            createPartitionFiles(partIndex);
-
-            string sqlStatement = "UPDATE graph SET vertexcount = '" + std::to_string(this->vertexCount) +
-                                  "' ,centralpartitioncount = '" + std::to_string(this->nParts) + "' ,edgecount = '" +
-                                  std::to_string(this->edgeCount) + "' WHERE idgraph = '" +
-                                  std::to_string(this->graphID) + "'";
-            this->sqlite->runUpdate(sqlStatement);
-            this->fullFileList.push_back(this->partitionFileMap);
-            this->fullFileList.push_back(this->centralStoreFileList);
-            this->fullFileList.push_back(this->centralStoreDuplicateFileList);
-            this->fullFileList.push_back(this->partitionAttributeFileList);
-            this->fullFileList.push_back(this->centralStoreAttributeFileList);
-            this->fullFileList.push_back(this->compositeCentralStoreFileList);
-            return (this->fullFileList);
-        }
-    } else {
-        perror("Popen error in executing gpmetis command");
-        partitioner_logger.log("Popen error in executing gpmetis command", "error");
     }
 
-    return std::vector<std::map<int, std::string>>{};  // Return an empty vector in case of error
+    // Use DynamicScalingPartitioner
+    DynamicScalingPartitioner dsp(graph, 4, 128);  // k_min=4, k_max=128 as per typical settings
+    auto partitions = dsp.partition(nParts);
+
+    // Create partIndex map: vertex -> partition by majority vote on incident edges
+    std::unordered_map<int, std::unordered_map<int, int>> vertexPartCounts;
+    for (int p = 0; p < nParts; ++p) {
+        for (const std::string& edge_str : partitions[p].edges) {
+            size_t space_pos = edge_str.find(' ');
+            if (space_pos != std::string::npos) {
+                int u = std::stoi(edge_str.substr(0, space_pos));
+                int v = std::stoi(edge_str.substr(space_pos + 1));
+                vertexPartCounts[u][p]++;
+                vertexPartCounts[v][p]++;
+            }
+        }
+    }
+
+    std::map<int, int> partIndex;
+    for (const auto& vp : vertexPartCounts) {
+        int vertex = vp.first;
+        const auto& counts = vp.second;
+        int max_p = 0;
+        int max_count = 0;
+        for (const auto& pc : counts) {
+            if (pc.second > max_count) {
+                max_count = pc.second;
+                max_p = pc.first;
+            }
+        }
+        partIndex[vertex] = max_p;
+    }
+
+    // Assign unassigned vertices (no edges) to partition 0
+    for (int v = smallestVertex; v <= largestVertex; ++v) {
+        if (graphStorageMap.count(v) && partIndex.find(v) == partIndex.end()) {
+            partIndex[v] = 0;
+        }
+    }
+
+    partitioner_logger.log("Done partitioning with dynamic scaling", "info");
+    createPartitionFiles(partIndex);
+
+    string sqlStatement = "UPDATE graph SET vertexcount = '" + std::to_string(this->vertexCount) +
+                          "' ,centralpartitioncount = '" + std::to_string(this->nParts) + "' ,edgecount = '" +
+                          std::to_string(this->edgeCount) + "' WHERE idgraph = '" +
+                          std::to_string(this->graphID) + "'";
+    this->sqlite->runUpdate(sqlStatement);
+    this->fullFileList.push_back(this->partitionFileMap);
+    this->fullFileList.push_back(this->centralStoreFileList);
+    this->fullFileList.push_back(this->centralStoreDuplicateFileList);
+    this->fullFileList.push_back(this->partitionAttributeFileList);
+    this->fullFileList.push_back(this->centralStoreAttributeFileList);
+    this->fullFileList.push_back(this->compositeCentralStoreFileList);
+    return (this->fullFileList);
 }
 
 void MetisPartitioner::createPartitionFiles(std::map<int, int> partMap) {
