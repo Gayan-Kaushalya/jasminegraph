@@ -31,7 +31,7 @@ limitations under the License.
 #include "../../metadb/SQLiteDBInterface.h"
 #include "../../nativestore/DataPublisher.h"
 #include "../../partitioner/local/JSONParser.h"
-#include "../../partitioner/local/MetisPartitioner.h"
+#include "../../partitioner/local/DynamicPartitioner.h"
 #include "../../partitioner/stream/Partitioner.h"
 #include "../../performance/metrics/PerformanceUtil.h"
 #include "../../server/JasmineGraphServer.h"
@@ -482,7 +482,7 @@ static void add_graph_command(std::string masterIP,
             name + "\", \"" + path + "\", \"" + uploadStartTime + "\", \"\",\"" +
             to_string(Conts::GRAPH_STATUS::LOADING) + "\", \"\", \"\", \"\")";
         int newGraphID = sqlite->runInsert(sqlStatement);
-        MetisPartitioner partitioner(sqlite);
+        DynamicPartitioner partitioner(sqlite);
         vector<std::map<int, string>> fullFileList;
 
         partitioner.loadDataSet(path, newGraphID);

@@ -30,7 +30,7 @@ limitations under the License.
 #include "../nativestore/DataPublisher.h"
 #include "../nativestore/RelationBlock.h"
 #include "../partitioner/local/JSONParser.h"
-#include "../partitioner/local/MetisPartitioner.h"
+#include "../partitioner/local/DynamicPartitioner.h"
 #include "../partitioner/local/RDFParser.h"
 #include "../partitioner/local/RDFPartitioner.h"
 #include "../partitioner/stream/Partitioner.h"
@@ -640,14 +640,14 @@ static void add_rdf_command(std::string masterIP, int connFd, SQLiteDBInterface 
         GetConfig appConfig;
         appConfig.readConfigFile(path, newGraphID);
 
-        MetisPartitioner metisPartitioner(sqlite);
+        DynamicPartitioner dynamicPartitioner(sqlite);
         vector<std::map<int, string>> fullFileList;
         string input_file_path =
             Utils::getHomeDir() + "/.jasminegraph/tmp/" + to_string(newGraphID) + "/" + to_string(newGraphID);
-        metisPartitioner.loadDataSet(input_file_path, newGraphID);
+        dynamicPartitioner.loadDataSet(input_file_path, newGraphID);
 
-        metisPartitioner.constructMetisFormat(Conts::GRAPH_TYPE_RDF);
-        fullFileList = metisPartitioner.partitioneWithGPMetis("");
+        dynamicPartitioner.constructMetisFormat(Conts::GRAPH_TYPE_RDF);
+        fullFileList = dynamicPartitioner.partitioneWithGPMetis("");
         JasmineGraphServer *server = JasmineGraphServer::getInstance();
         server->uploadGraphLocally(newGraphID, Conts::GRAPH_WITH_ATTRIBUTES, fullFileList, masterIP);
         Utils::deleteDirectory(Utils::getHomeDir() + "/.jasminegraph/tmp/" + to_string(newGraphID));
@@ -728,7 +728,7 @@ static void add_graph_command(std::string masterIP, int connFd, SQLiteDBInterfac
             name + "\", \"" + path + "\", \"" + uploadStartTime + "\", \"\",\"" +
             to_string(Conts::GRAPH_STATUS::LOADING) + "\", \"\", \"\", \"\")";
         int newGraphID = sqlite->runInsert(sqlStatement);
-        MetisPartitioner partitioner(sqlite);
+        DynamicPartitioner partitioner(sqlite);
         vector<std::map<int, string>> fullFileList;
 
         partitioner.loadDataSet(path, newGraphID);
@@ -899,7 +899,7 @@ static void add_graph_cust_command(std::string masterIP, int connFd, SQLiteDBInt
             name + "\", \"" + edgeListPath + "\", \"" + uploadStartTime + "\", \"\",\"" +
             to_string(Conts::GRAPH_STATUS::LOADING) + "\", \"\", \"\", \"\")";
         int newGraphID = sqlite->runInsert(sqlStatement);
-        MetisPartitioner partitioner(sqlite);
+        DynamicPartitioner partitioner(sqlite);
         vector<std::map<int, string>> fullFileList;
         partitioner.loadContentData(attributeListPath, graphAttributeType, newGraphID, attrDataType);
         partitioner.loadDataSet(edgeListPath, newGraphID);

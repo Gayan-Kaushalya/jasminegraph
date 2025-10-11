@@ -1,0 +1,130 @@
+/**
+Copyright 2019 JasmineGraph Team
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+    http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+ */
+
+#ifndef JASMINEGRAPH_DYNAMICPARTITIONER_H
+#define JASMINEGRAPH_DYNAMICPARTITIONER_H
+
+#include <flatbuffers/util.h>
+#include <string.h>
+
+#include <algorithm>
+#include <cstddef>
+#include <fstream>
+#include <iostream>
+#include <map>
+#include <mutex>
+#include <set>
+#include <sstream>
+#include <string>
+#include <thread>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+
+// For idx_t type compatibility with METIS
+typedef int32_t idx_t;
+
+#include "../../centralstore/JasmineGraphHashMapCentralStore.h"
+#include "../../localstore/JasmineGraphHashMapLocalStore.h"
+#include "../../metadb/SQLiteDBInterface.h"
+#include "../../util/Utils.h"
+#include "RDFParser.h"
+#include "../DynamicScalingPartitioner.h"
+#include "stream/Partition.h"
+
+using std::string;
+
+class DynamicPartitioner {
+ public:
+    void loadDataSet(string inputFilePath, int graphID);
+
+    int constructMetisFormat(string graph_type);
+
+    std::vector<std::map<int, std::string>> partitioneWithGPMetis(string partitionCount);
+
+    // reformat the vertex list by mapping vertex values to new sequntial IDs
+    std::string reformatDataSet(string inputFilePath, int graphID);
+
+    void loadContentData(string inputAttributeFilePath, string graphAttributeType, int graphID, string attrType);
+
+    DynamicPartitioner(SQLiteDBInterface *);
+
+ private:
+    idx_t edgeCount = 0;
+    idx_t largestVertex = 0;
+    idx_t vertexCount = 0;
+    int nParts = 0;
+    string outputFilePath;
+    bool zeroflag = false;
+    SQLiteDBInterface *sqlite;
+    int graphID;
+    string graphType;
+    int smallestVertex = std::numeric_limits<int>::max();
+    string graphAttributeType;
+
+    std::map<int, std::string> partitionFileMap;
+    std::map<int, std::string> centralStoreFileList;
+    std::map<int, std::string> compositeCentralStoreFileList;
+    std::map<int, std::string> centralStoreDuplicateFileList;
+    std::map<int, std::string> partitionAttributeFileList;
+    std::map<int, std::string> centralStoreAttributeFileList;
+    std::vector<std::map<int, std::string>> fullFileList;
+
+    std::map<int, std::vector<int>> graphStorageMap;
+    std::map<int, std::vector<int>> graphEdgeMap;
+    std::unordered_map<int, size_t> partVertexCounts;
+    std::unordered_map<int, size_t> masterEdgeCounts;
+    std::unordered_map<int, size_t> masterEdgeCountsWithDups;
+    std::map<int, std::map<int, std::vector<int>>> partitionedLocalGraphStorageMap;
+    std::map<int, std::map<int, std::vector<int>>> masterGraphStorageMap;
+    std::map<string, std::map<int, std::vector<int>>> compositeMasterGraphStorageMap;
+    std::map<int, std::map<int, std::vector<int>>> duplicateMasterGraphStorageMap;
+    std::map<int, std::map<int, std::map<int, std::vector<int>>>> commonCentralStoreEdgeMap;
+    std::vector<int> xadj;
+    std::vector<int> adjncy;
+    std::map<std::pair<int, int>, int> edgeMap;
+    std::map<long, string[7]> articlesMap;
+    std::map<int, int> vertexToIDMap;
+    std::map<int, int> idToVertexMap;
+    std::map<int, std::string> attributeDataMap;
+
+    // Dynamic partitioning specific members
+    std::unique_ptr<DynamicScalingPartitioner> dynamicPartitioner;
+    std::unordered_map<std::string, std::vector<std::string>> adjacencyList;
+
+    void createPartitionFiles(std::map<int, int> partMap);
+
+    void populatePartMaps(std::map<int, int> partMap, int part);
+
+    void writeSerializedMasterFiles(int part);
+
+    void writeSerializedCompositeMasterFiles(std::string part);
+
+    void writeSerializedDuplicateMasterFiles(int part);
+
+    void writeSerializedPartitionFiles(int part);
+
+    void writeRDFAttributeFilesForPartitions(int part);
+
+    void writeRDFAttributeFilesForMasterParts(int part);
+
+    void writeTextAttributeFilesForPartitions(int part);
+
+    void writeTextAttributeFilesForMasterParts(int part);
+
+    // Dynamic partitioning specific methods
+    void buildAdjacencyList();
+    std::map<int, int> performDynamicPartitioning();
+};
+
+#endif  // JASMINEGRAPH_DYNAMICPARTITIONER_H
