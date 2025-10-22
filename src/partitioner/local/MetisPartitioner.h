@@ -36,7 +36,9 @@ limitations under the License.
 #include "../../metadb/SQLiteDBInterface.h"
 #include "../../util/Utils.h"
 #include "RDFParser.h"
-#include "../DynamicScalingPartitioner.h"
+
+// For idx_t type compatibility
+typedef int32_t idx_t;
 
 using std::string;
 

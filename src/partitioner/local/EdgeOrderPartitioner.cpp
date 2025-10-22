@@ -19,10 +19,10 @@
 #include <unordered_set>
 #include <cmath>
 #include <thread>
+#include <chrono>
 
 #include "../../util/Conts.h"
 #include "../../util/logger/Logger.h"
-#include "../../util/dbutil/GetConfig.h"
 #include "../../centralstore/JasmineGraphHashMapCentralStore.h"
 #include "../../localstore/JasmineGraphHashMapLocalStore.h"
 #include "RDFParser.h"
@@ -487,6 +487,14 @@ void EdgeOrderPartitioner::loadContentData(string inputAttributeFilePath,
                graphAttributeType == Conts::GRAPH_WITH_XML_ATTRIBUTES) {
         // TODO: Implement JSON and XML attribute loading if needed
         partitioner_logger.log("JSON/XML attributes not yet implemented", "warn");
+    }
+    
+    // Load RDF attributes if available (from GetConfig)
+    if (GetConfig::getEdgeMap().size() > 0) {
+        edgeMap = GetConfig::getEdgeMap();
+    }
+    if (GetConfig::getAttributesMap().size() > 0) {
+        articlesMap = GetConfig::getAttributesMap();
     }
     
     partitioner_logger.log("Content data loaded", "info");
