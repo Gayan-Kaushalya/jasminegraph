@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "../../util/Conts.h"
 #include "../../util/logger/Logger.h"
-#include "../../util/dbutil/GetConfig.h"
 
 Logger partitioner_logger;
 std::mutex partFileMutex;
