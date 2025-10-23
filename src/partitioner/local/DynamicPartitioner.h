@@ -40,7 +40,7 @@ typedef int32_t idx_t;
 #include "../../util/Utils.h"
 #include "RDFParser.h"
 #include "../DynamicScalingPartitioner.h"
-#include "stream/Partition.h"
+#include "../stream/Partition.h"
 
 using std::string;
 
