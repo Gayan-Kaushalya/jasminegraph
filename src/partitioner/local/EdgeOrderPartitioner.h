@@ -97,6 +97,9 @@ class EdgeOrderPartitioner {
     std::map<int, std::map<int, std::vector<int>>> masterGraphStorageMap;
     std::map<int, std::map<int, std::vector<int>>> duplicateMasterGraphStorageMap;
     std::map<int, std::map<int, std::map<int, std::vector<int>>>> commonCentralStoreEdgeMap;
+   // Maps for RDF attributes and composite master storage (used by RDF/compound central store writers)
+   std::map<std::pair<int, int>, int> edgeMap;
+   std::map<std::string, std::map<int, std::vector<int>>> compositeMasterGraphStorageMap;
     
     std::map<int, std::string> partitionFileMap;
     std::map<int, std::string> centralStoreFileList;
