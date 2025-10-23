@@ -131,6 +131,7 @@ set(SOURCES src/backend/JasmineGraphBackend.cpp
         src/partitioner/local/JSONParser.cpp
         src/partitioner/local/MetisPartitioner.cpp
         src/partitioner/local/EdgeOrderPartitioner.cpp
+        src/partitioner/local/DynamicPartitioner.cpp
         src/partitioner/local/RDFParser.cpp
         src/partitioner/local/RDFPartitioner.cpp
         src/partitioner/stream/Partition.cpp
