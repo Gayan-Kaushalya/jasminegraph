@@ -31,6 +31,7 @@ limitations under the License.
 #include "../nativestore/RelationBlock.h"
 #include "../partitioner/local/JSONParser.h"
 #include "../partitioner/local/MetisPartitioner.h"
+#include "../partitioner/local/EdgeListPartitioner.h"
 #include "../partitioner/local/RDFParser.h"
 #include "../partitioner/local/RDFPartitioner.h"
 #include "../partitioner/stream/Partitioner.h"
@@ -640,14 +641,13 @@ static void add_rdf_command(std::string masterIP, int connFd, SQLiteDBInterface 
         GetConfig appConfig;
         appConfig.readConfigFile(path, newGraphID);
 
-        MetisPartitioner metisPartitioner(sqlite);
+        EdgeListPartitioner partitioner(sqlite);
         vector<std::map<int, string>> fullFileList;
         string input_file_path =
             Utils::getHomeDir() + "/.jasminegraph/tmp/" + to_string(newGraphID) + "/" + to_string(newGraphID);
-        metisPartitioner.loadDataSet(input_file_path, newGraphID);
+        partitioner.loadDataSet(input_file_path, newGraphID);
 
-        metisPartitioner.constructMetisFormat(Conts::GRAPH_TYPE_RDF);
-        fullFileList = metisPartitioner.partitioneWithGPMetis("");
+        fullFileList = partitioner.partitionByEdgeList("");
         JasmineGraphServer *server = JasmineGraphServer::getInstance();
         server->uploadGraphLocally(newGraphID, Conts::GRAPH_WITH_ATTRIBUTES, fullFileList, masterIP);
         Utils::deleteDirectory(Utils::getHomeDir() + "/.jasminegraph/tmp/" + to_string(newGraphID));
@@ -728,19 +728,11 @@ static void add_graph_command(std::string masterIP, int connFd, SQLiteDBInterfac
             name + "\", \"" + path + "\", \"" + uploadStartTime + "\", \"\",\"" +
             to_string(Conts::GRAPH_STATUS::LOADING) + "\", \"\", \"\", \"\")";
         int newGraphID = sqlite->runInsert(sqlStatement);
-        MetisPartitioner partitioner(sqlite);
+        EdgeListPartitioner partitioner(sqlite);
         vector<std::map<int, string>> fullFileList;
 
         partitioner.loadDataSet(path, newGraphID);
-        int result = partitioner.constructMetisFormat(Conts::GRAPH_TYPE_NORMAL);
-        if (result == 0) {
-            string reformattedFilePath = partitioner.reformatDataSet(path, newGraphID);
-            partitioner.loadDataSet(reformattedFilePath, newGraphID);
-            partitioner.constructMetisFormat(Conts::GRAPH_TYPE_NORMAL_REFORMATTED);
-            fullFileList = partitioner.partitioneWithGPMetis(partitionCount);
-        } else {
-            fullFileList = partitioner.partitioneWithGPMetis(partitionCount);
-        }
+        fullFileList = partitioner.partitionByEdgeList(partitionCount);
         frontend_logger.info("Upload done");
         JasmineGraphServer *server = JasmineGraphServer::getInstance();
         server->uploadGraphLocally(newGraphID, Conts::GRAPH_TYPE_NORMAL, fullFileList, masterIP);
@@ -899,17 +891,11 @@ static void add_graph_cust_command(std::string masterIP, int connFd, SQLiteDBInt
             name + "\", \"" + edgeListPath + "\", \"" + uploadStartTime + "\", \"\",\"" +
             to_string(Conts::GRAPH_STATUS::LOADING) + "\", \"\", \"\", \"\")";
         int newGraphID = sqlite->runInsert(sqlStatement);
-        MetisPartitioner partitioner(sqlite);
+        EdgeListPartitioner partitioner(sqlite);
         vector<std::map<int, string>> fullFileList;
         partitioner.loadContentData(attributeListPath, graphAttributeType, newGraphID, attrDataType);
         partitioner.loadDataSet(edgeListPath, newGraphID);
-        int result = partitioner.constructMetisFormat(Conts::GRAPH_TYPE_NORMAL);
-        if (result == 0) {
-            string reformattedFilePath = partitioner.reformatDataSet(edgeListPath, newGraphID);
-            partitioner.loadDataSet(reformattedFilePath, newGraphID);
-            partitioner.constructMetisFormat(Conts::GRAPH_TYPE_NORMAL_REFORMATTED);
-        }
-        fullFileList = partitioner.partitioneWithGPMetis("");
+        fullFileList = partitioner.partitionByEdgeList("");
 
         // Graph type should be changed to identify graphs with attributes
         // because this graph type has additional attribute files to be uploaded

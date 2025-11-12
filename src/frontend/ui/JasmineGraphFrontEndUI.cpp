@@ -32,6 +32,7 @@ limitations under the License.
 #include "../../nativestore/DataPublisher.h"
 #include "../../partitioner/local/JSONParser.h"
 #include "../../partitioner/local/MetisPartitioner.h"
+#include "../../partitioner/local/EdgeListPartitioner.h"
 #include "../../partitioner/stream/Partitioner.h"
 #include "../../performance/metrics/PerformanceUtil.h"
 #include "../../server/JasmineGraphServer.h"
@@ -482,19 +483,11 @@ static void add_graph_command(std::string masterIP,
             name + "\", \"" + path + "\", \"" + uploadStartTime + "\", \"\",\"" +
             to_string(Conts::GRAPH_STATUS::LOADING) + "\", \"\", \"\", \"\")";
         int newGraphID = sqlite->runInsert(sqlStatement);
-        MetisPartitioner partitioner(sqlite);
+        EdgeListPartitioner partitioner(sqlite);
         vector<std::map<int, string>> fullFileList;
 
         partitioner.loadDataSet(path, newGraphID);
-        int result = partitioner.constructMetisFormat(Conts::GRAPH_TYPE_NORMAL);
-        if (result == 0) {
-            string reformattedFilePath = partitioner.reformatDataSet(path, newGraphID);
-            partitioner.loadDataSet(reformattedFilePath, newGraphID);
-            partitioner.constructMetisFormat(Conts::GRAPH_TYPE_NORMAL_REFORMATTED);
-            fullFileList = partitioner.partitioneWithGPMetis(partitionCount);
-        } else {
-            fullFileList = partitioner.partitioneWithGPMetis(partitionCount);
-        }
+        fullFileList = partitioner.partitionByEdgeList(partitionCount);
         ui_frontend_logger.info("Upload done");
         JasmineGraphServer *server = JasmineGraphServer::getInstance();
         server->uploadGraphLocally(newGraphID, Conts::GRAPH_TYPE_NORMAL, fullFileList, masterIP);
