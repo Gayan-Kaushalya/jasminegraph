@@ -205,10 +205,13 @@ std::vector<std::map<int, std::string>> EdgeListPartitioner::partitionByEdgeList
 
     edgelist_partitioner_logger.log("Vertex assignment completed", "info");
 
-    // Step 5: Create partition files
+    // Step 5: Rebalance partitions to achieve vertex and edge balance
+    rebalancePartitions(partMap);
+
+    // Step 6: Create partition files
     createPartitionFiles(partMap);
 
-    // Step 6: Update database
+    // Step 7: Update database
     string sqlStatement = "UPDATE graph SET vertexcount = '" + std::to_string(this->vertexCount) +
                           "' ,centralpartitioncount = '" + std::to_string(this->nParts) + "' ,edgecount = '" +
                           std::to_string(this->edgeCount) + "' WHERE idgraph = '" +
@@ -449,6 +452,181 @@ void EdgeListPartitioner::populatePartMaps(std::map<int, int> partMap, int part)
     edgelist_dbLock.lock();
     this->sqlite->runUpdate(sqlStatement);
     edgelist_dbLock.unlock();
+}
+
+void EdgeListPartitioner::rebalancePartitions(std::map<int, int>& partMap) {
+    edgelist_partitioner_logger.log("Starting post-partition rebalancing", "info");
+    
+    // Calculate initial partition statistics
+    std::unordered_map<int, int> partVertexCount;
+    std::unordered_map<int, int> partEdgeCount;
+    std::unordered_map<int, std::unordered_set<int>> partVertices;
+    
+    // Count vertices and edges per partition
+    for (const auto& vertexPair : vertexEdges) {
+        int vertex = vertexPair.first;
+        int part = partMap[vertex];
+        partVertexCount[part]++;
+        partVertices[part].insert(vertex);
+    }
+    
+    for (const auto& edge : edgeList) {
+        int startVertex = edge.first;
+        int startPart = partMap[startVertex];
+        partEdgeCount[startPart]++;
+    }
+    
+    // Calculate average vertices and edges per partition
+    double avgVertices = static_cast<double>(vertexCount) / nParts;
+    double avgEdges = static_cast<double>(edgeCount) / nParts;
+    
+    // Define imbalance tolerance (20%)
+    const double IMBALANCE_TOLERANCE = 0.2;
+    double maxVertices = avgVertices * (1.0 + IMBALANCE_TOLERANCE);
+    double minVertices = avgVertices * (1.0 - IMBALANCE_TOLERANCE);
+    double maxEdges = avgEdges * (1.0 + IMBALANCE_TOLERANCE);
+    
+    edgelist_partitioner_logger.log("Average vertices per partition: " + std::to_string(avgVertices), "info");
+    edgelist_partitioner_logger.log("Average edges per partition: " + std::to_string(avgEdges), "info");
+    
+    // Identify overloaded and underloaded partitions
+    std::vector<int> overloadedPartitions;
+    std::vector<int> underloadedPartitions;
+    
+    for (int part = 0; part < nParts; part++) {
+        int vCount = partVertexCount[part];
+        int eCount = partEdgeCount[part];
+        
+        edgelist_partitioner_logger.log("Partition " + std::to_string(part) + 
+                                        ": " + std::to_string(vCount) + " vertices, " + 
+                                        std::to_string(eCount) + " edges", "info");
+        
+        if (vCount > maxVertices || eCount > maxEdges) {
+            overloadedPartitions.push_back(part);
+        } else if (vCount < minVertices) {
+            underloadedPartitions.push_back(part);
+        }
+    }
+    
+    if (overloadedPartitions.empty() && underloadedPartitions.empty()) {
+        edgelist_partitioner_logger.log("Partitions are already balanced, skipping rebalancing", "info");
+        return;
+    }
+    
+    edgelist_partitioner_logger.log("Found " + std::to_string(overloadedPartitions.size()) + 
+                                    " overloaded and " + std::to_string(underloadedPartitions.size()) + 
+                                    " underloaded partitions", "info");
+    
+    // Perform vertex reassignment
+    int reassignedVertices = 0;
+    const int MAX_ITERATIONS = 10;
+    
+    for (int iteration = 0; iteration < MAX_ITERATIONS && !overloadedPartitions.empty(); iteration++) {
+        std::vector<int> stillOverloaded;
+        
+        for (int overloadedPart : overloadedPartitions) {
+            int currentVertexCount = partVertexCount[overloadedPart];
+            int currentEdgeCount = partEdgeCount[overloadedPart];
+            
+            // Skip if this partition is now balanced
+            if (currentVertexCount <= maxVertices && currentEdgeCount <= maxEdges) {
+                continue;
+            }
+            
+            // Select vertices to move - prioritize vertices with fewer edges
+            std::vector<std::pair<int, int>> vertexEdgeCountList;
+            for (int vertex : partVertices[overloadedPart]) {
+                int edgeCountForVertex = vertexEdges[vertex].size();
+                vertexEdgeCountList.push_back({vertex, edgeCountForVertex});
+            }
+            
+            // Sort by edge count (ascending) - move vertices with fewer edges first
+            std::sort(vertexEdgeCountList.begin(), vertexEdgeCountList.end(),
+                     [](const auto& a, const auto& b) { return a.second < b.second; });
+            
+            // Find best target partition
+            for (const auto& vertexEdgePair : vertexEdgeCountList) {
+                int vertex = vertexEdgePair.first;
+                int vertexEdgeCount = vertexEdgePair.second;
+                
+                // Check if we still need to rebalance
+                if (partVertexCount[overloadedPart] <= avgVertices && 
+                    partEdgeCount[overloadedPart] <= avgEdges) {
+                    break;
+                }
+                
+                // Find best target partition - prefer underloaded, then least loaded
+                int bestTarget = -1;
+                double bestScore = std::numeric_limits<double>::max();
+                
+                for (int targetPart = 0; targetPart < nParts; targetPart++) {
+                    if (targetPart == overloadedPart) continue;
+                    
+                    int targetVertexCount = partVertexCount[targetPart];
+                    int targetEdgeCount = partEdgeCount[targetPart];
+                    
+                    // Check if target can accept the vertex
+                    if (targetVertexCount + 1 <= maxVertices && 
+                        targetEdgeCount + vertexEdgeCount <= maxEdges) {
+                        
+                        // Calculate score based on how much it improves balance
+                        double vertexImbalance = std::abs(targetVertexCount + 1 - avgVertices);
+                        double edgeImbalance = std::abs(targetEdgeCount + vertexEdgeCount - avgEdges);
+                        double score = vertexImbalance + edgeImbalance;
+                        
+                        if (score < bestScore) {
+                            bestScore = score;
+                            bestTarget = targetPart;
+                        }
+                    }
+                }
+                
+                // Reassign vertex if a suitable target was found
+                if (bestTarget != -1) {
+                    // Update partition assignment
+                    partMap[vertex] = bestTarget;
+                    
+                    // Update statistics
+                    partVertices[overloadedPart].erase(vertex);
+                    partVertices[bestTarget].insert(vertex);
+                    partVertexCount[overloadedPart]--;
+                    partVertexCount[bestTarget]++;
+                    
+                    // Update edge counts
+                    for (const auto& edge : edgeList) {
+                        if (edge.first == vertex) {
+                            partEdgeCount[overloadedPart]--;
+                            partEdgeCount[bestTarget]++;
+                        }
+                    }
+                    
+                    reassignedVertices++;
+                }
+            }
+            
+            // Check if still overloaded
+            if (partVertexCount[overloadedPart] > maxVertices || 
+                partEdgeCount[overloadedPart] > maxEdges) {
+                stillOverloaded.push_back(overloadedPart);
+            }
+        }
+        
+        overloadedPartitions = stillOverloaded;
+        
+        if (overloadedPartitions.empty()) {
+            break;
+        }
+    }
+    
+    edgelist_partitioner_logger.log("Rebalancing complete. Reassigned " + 
+                                    std::to_string(reassignedVertices) + " vertices", "info");
+    
+    // Log final statistics
+    for (int part = 0; part < nParts; part++) {
+        edgelist_partitioner_logger.log("Final Partition " + std::to_string(part) + 
+                                        ": " + std::to_string(partVertexCount[part]) + " vertices, " + 
+                                        std::to_string(partEdgeCount[part]) + " edges", "info");
+    }
 }
 
 void EdgeListPartitioner::writeSerializedPartitionFiles(int part) {

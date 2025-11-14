@@ -89,6 +89,7 @@ class EdgeListPartitioner {
 
     void createPartitionFiles(std::map<int, int> partMap);
     void populatePartMaps(std::map<int, int> partMap, int part);
+    void rebalancePartitions(std::map<int, int>& partMap);
     void writeSerializedMasterFiles(int part);
     void writeSerializedCompositeMasterFiles(std::string part);
     void writeSerializedDuplicateMasterFiles(int part);
