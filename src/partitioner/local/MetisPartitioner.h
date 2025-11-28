@@ -52,6 +52,12 @@ class MetisPartitioner {
     // reformat the vertex list by mapping vertex values to new sequntial IDs
     std::string reformatDataSet(string inputFilePath, int graphID);
 
+    // Calculate edge count for each partition
+    std::map<int, idx_t> calculatePartitionEdgeCounts(std::map<int, int> partMap);
+
+    // Recursively partition based on edge count criteria
+    std::vector<std::map<int, std::string>> recursivePartition(string partitionCount);
+
     void loadContentData(string inputAttributeFilePath, string graphAttributeType, int graphID, string attrType);
 
     MetisPartitioner(SQLiteDBInterface *);

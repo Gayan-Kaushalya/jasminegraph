@@ -201,6 +201,57 @@ int MetisPartitioner::constructMetisFormat(string graph_type) {
     return 1;
 }
 
+std::map<int, idx_t> MetisPartitioner::calculatePartitionEdgeCounts(std::map<int, int> partMap) {
+    std::map<int, idx_t> partitionEdgeCounts;
+    
+    // Initialize edge counts for all partitions
+    for (int i = 0; i < nParts; i++) {
+        partitionEdgeCounts[i] = 0;
+    }
+    
+    // Count edges for each partition
+    for (auto it = graphEdgeMap.begin(); it != graphEdgeMap.end(); ++it) {
+        int vertex = it->first;
+        int partId = partMap[vertex];
+        
+        // Count all edges from this vertex that belong to this partition
+        std::vector<int> edges = it->second;
+        for (int neighbor : edges) {
+            // Count edge if both vertices are in the same partition
+            if (partMap[neighbor] == partId) {
+                partitionEdgeCounts[partId]++;
+            }
+        }
+    }
+    
+    // Divide by 2 since each edge is counted twice (once from each endpoint)
+    for (int i = 0; i < nParts; i++) {
+        partitionEdgeCounts[i] /= 2;
+    }
+    
+    return partitionEdgeCounts;
+}
+
+std::vector<std::map<int, std::string>> MetisPartitioner::recursivePartition(string partitionCount) {
+    partitioner_logger.log("Starting recursive partitioning based on edge count", "info");
+    
+    const idx_t TARGET_EDGES = 3000000;  // 3 million edges target
+    const idx_t THRESHOLD_EDGES = 6000000;  // 6 million edges threshold
+    
+    // Check total edge count to determine partitioning strategy
+    if (edgeCount <= THRESHOLD_EDGES) {
+        partitioner_logger.log("Total edge count (" + std::to_string(edgeCount) + ") <= 6M, partitioning into 2 parts", "info");
+        return partitioneWithGPMetis("2");
+    }
+    
+    // Calculate number of partitions needed to get close to 3M edges per partition
+    int calculatedParts = (int)std::ceil((double)edgeCount / TARGET_EDGES);
+    partitioner_logger.log("Total edge count: " + std::to_string(edgeCount) + ", calculated partitions: " + std::to_string(calculatedParts), "info");
+    
+    // Perform initial partitioning
+    return partitioneWithGPMetis(std::to_string(calculatedParts));
+}
+
 std::vector<std::map<int, std::string>> MetisPartitioner::partitioneWithGPMetis(string partitionCount) {
     partitioner_logger.log("Partitioning with gpmetis", "info");
     if (partitionCount != "") {
