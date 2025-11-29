@@ -491,9 +491,9 @@ static void add_graph_command(std::string masterIP,
             string reformattedFilePath = partitioner.reformatDataSet(path, newGraphID);
             partitioner.loadDataSet(reformattedFilePath, newGraphID);
             partitioner.constructMetisFormat(Conts::GRAPH_TYPE_NORMAL_REFORMATTED);
-            fullFileList = partitioner.partitioneWithGPMetis(partitionCount);
+            fullFileList = partitioner.partitioneWithGPMetis("8");
         } else {
-            fullFileList = partitioner.partitioneWithGPMetis(partitionCount);
+            fullFileList = partitioner.partitioneWithGPMetis("8");
         }
         ui_frontend_logger.info("Upload done");
         JasmineGraphServer *server = JasmineGraphServer::getInstance();
