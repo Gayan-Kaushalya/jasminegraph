@@ -15,7 +15,7 @@ limitations under the License.
 #include "../../util/logger/Logger.h"
 #include "../../util/Utils.h"
 #include "../../util/GraphSizeEstimator.h"
-#include "../../performance/metrics/StatisticsCollector.h"
+#include "../../performance/metrics/StatisticCollector.h"    /// Make sure to change this when merging to master branch
 #include <cmath>
 #include <algorithm>
 #include <iostream>
