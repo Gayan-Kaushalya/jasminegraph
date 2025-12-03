@@ -37,6 +37,7 @@ set(HEADERS globals.h
         src/ml/trainer/JasmineGraphTrainingSchedular.h
         src/partitioner/local/JSONParser.h
         src/partitioner/local/MetisPartitioner.h
+        src/partitioner/local/MemoryBasedPartitioner.h
         src/partitioner/local/RDFParser.h
         src/partitioner/local/RDFPartitioner.h
         src/partitioner/stream/Partition.h
@@ -63,6 +64,7 @@ set(HEADERS globals.h
         src/server/JasmineGraphServer.h
         src/util/Conts.h
         src/util/Utils.h
+        src/util/GraphSizeEstimator.h
         src/util/dbutil/attributestore_generated.h
         src/util/dbutil/edgestore_generated.h
         src/util/dbutil/partedgemapstore_generated.h
@@ -130,6 +132,7 @@ set(SOURCES src/backend/JasmineGraphBackend.cpp
         src/ml/trainer/JasmineGraphTrainingSchedular.cpp
         src/partitioner/local/JSONParser.cpp
         src/partitioner/local/MetisPartitioner.cpp
+        src/partitioner/local/MemoryBasedPartitioner.cpp
         src/partitioner/local/RDFParser.cpp
         src/partitioner/local/RDFPartitioner.cpp
         src/partitioner/stream/Partition.cpp
@@ -156,6 +159,7 @@ set(SOURCES src/backend/JasmineGraphBackend.cpp
         src/server/JasmineGraphServer.cpp
         src/util/Conts.cpp
         src/util/Utils.cpp
+        src/util/GraphSizeEstimator.cpp
         src/util/kafka/KafkaCC.cpp
         src/util/kafka/StreamHandler.cpp
         src/util/kafka/InstanceStreamHandler.cpp
