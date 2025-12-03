@@ -68,6 +68,11 @@ class StatisticCollector {
     static std::map<std::string, double> getDiskBlockSizeKB();
     static std::map<std::string, double> getDiskTransfersPerSecond();
     static void logLoadAverage(std::string name);
+    
+    // Memory-based partitioning functions
+    static long getAvailableMemoryPerCore();
+    static double getMemoryUsagePercentage();
+    static long getAvailableMemory();
 };
 
 #endif  // JASMINEGRAPH_STATISTICCOLLECTOR_H

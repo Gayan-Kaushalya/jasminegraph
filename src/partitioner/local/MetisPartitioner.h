@@ -57,6 +57,9 @@ class MetisPartitioner {
 
     // Recursively partition based on edge count criteria
     std::vector<std::map<int, std::string>> recursivePartition(string partitionCount);
+    
+    // Memory-based partitioning
+    std::vector<std::map<int, std::string>> memoryBasedPartition(string graphFilePath);
 
     void loadContentData(string inputAttributeFilePath, string graphAttributeType, int graphID, string attrType);
 

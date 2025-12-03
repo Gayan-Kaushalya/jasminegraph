@@ -86,6 +86,7 @@ PerformanceSQLiteDBInterface *perfSqlite, JobScheduler *jobScheduler);
 static void add_rdf_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p);
 static void add_graph_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p);
 static void add_graph_cust_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p);
+static void add_graph_memory_based_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p);
 static void remove_graph_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p);
 static void add_model_command(int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p);
 static void add_stream_kafka_command(int connFd, std::string &kafka_server_IP, cppkafka::Configuration &configs,
@@ -203,6 +204,8 @@ void *frontendservicesesion(void *dummyPt) {
             add_model_command(connFd, sqlite, &loop_exit);
         } else if (line.compare(ADGR_CUST) == 0) {
             add_graph_cust_command(masterIP, connFd, sqlite, &loop_exit);
+        } else if (line.compare(ADGR_MEM) == 0) {
+            add_graph_memory_based_command(masterIP, connFd, sqlite, &loop_exit);
         } else if (line.compare(ADD_STREAM_KAFKA) == 0) {
             if (!workerClientsInitialized) {
                 workerClients = getWorkerClients(sqlite);
@@ -929,6 +932,94 @@ static void add_graph_cust_command(std::string masterIP, int connFd, SQLiteDBInt
             frontend_logger.error("Error writing to socket");
             *loop_exit_p = true;
             return;
+        }
+    } else {
+        frontend_logger.error("Graph data file does not exist on the specified path");
+    }
+}
+
+static void add_graph_memory_based_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p) {
+    // Memory-based graph partitioning command
+    int result_wr = write(connFd, SEND.c_str(), FRONTEND_COMMAND_LENGTH);
+    if (result_wr < 0) {
+        frontend_logger.error("Error writing to socket");
+        *loop_exit_p = true;
+        return;
+    }
+    result_wr = write(connFd, Conts::CARRIAGE_RETURN_NEW_LINE.c_str(), Conts::CARRIAGE_RETURN_NEW_LINE.size());
+    if (result_wr < 0) {
+        frontend_logger.error("Error writing to socket");
+        *loop_exit_p = true;
+        return;
+    }
+
+    // We get the name and the path to graph as a pair separated by |.
+    char graph_data[FRONTEND_DATA_LENGTH + 1];
+    bzero(graph_data, FRONTEND_DATA_LENGTH + 1);
+    string name = "";
+    string path = "";
+
+    read(connFd, graph_data, FRONTEND_DATA_LENGTH);
+
+    std::time_t time = chrono::system_clock::to_time_t(chrono::system_clock::now());
+    string uploadStartTime = ctime(&time);
+    string gData(graph_data);
+
+    gData = Utils::trim_copy(gData);
+    frontend_logger.info("Data received: " + gData);
+
+    std::vector<std::string> strArr = Utils::split(gData, '|');
+
+    if (strArr.size() < 2) {
+        frontend_logger.error("Message format not recognized");
+        return;
+    }
+
+    name = strArr[0];
+    path = strArr[1];
+
+    if (JasmineGraphFrontEndCommon::graphExists(path, sqlite)) {
+        frontend_logger.error("Graph exists");
+        return;
+    }
+
+    if (Utils::fileExists(path)) {
+        frontend_logger.info("Path exists");
+
+        string sqlStatement =
+            "INSERT INTO graph (name,upload_path,upload_start_time,upload_end_time,graph_status_idgraph_status,"
+            "vertexcount,centralpartitioncount,edgecount) VALUES(\"" +
+            name + "\", \"" + path + "\", \"" + uploadStartTime + "\", \"\",\"" +
+            to_string(Conts::GRAPH_STATUS::LOADING) + "\", \"\", \"\", \"\")";
+        int newGraphID = sqlite->runInsert(sqlStatement);
+        MetisPartitioner partitioner(sqlite);
+        vector<std::map<int, string>> fullFileList;
+
+        partitioner.loadDataSet(path, newGraphID);
+        int result = partitioner.constructMetisFormat(Conts::GRAPH_TYPE_NORMAL);
+        if (result == 0) {
+            string reformattedFilePath = partitioner.reformatDataSet(path, newGraphID);
+            partitioner.loadDataSet(reformattedFilePath, newGraphID);
+            partitioner.constructMetisFormat(Conts::GRAPH_TYPE_NORMAL_REFORMATTED);
+            fullFileList = partitioner.memoryBasedPartition(reformattedFilePath);
+        } else {
+            fullFileList = partitioner.memoryBasedPartition(path);
+        }
+        frontend_logger.info("Memory-based partitioning completed");
+        JasmineGraphServer *server = JasmineGraphServer::getInstance();
+        server->uploadGraphLocally(newGraphID, Conts::GRAPH_TYPE_NORMAL, fullFileList, masterIP);
+        Utils::deleteDirectory(Utils::getHomeDir() + "/.jasminegraph/tmp/" + to_string(newGraphID));
+        JasmineGraphFrontEndCommon::getAndUpdateUploadTime(to_string(newGraphID), sqlite);
+        result_wr = write(connFd, DONE.c_str(), DONE.size());
+        if (result_wr < 0) {
+            frontend_logger.error("Error writing to socket");
+            *loop_exit_p = true;
+            return;
+        }
+        result_wr = write(connFd, Conts::CARRIAGE_RETURN_NEW_LINE.c_str(), Conts::CARRIAGE_RETURN_NEW_LINE.size());
+        if (result_wr < 0) {
+            frontend_logger.error("Error writing to socket");
+            *loop_exit_p = true;
         }
     } else {
         frontend_logger.error("Graph data file does not exist on the specified path");

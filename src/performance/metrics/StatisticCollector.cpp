@@ -965,3 +965,29 @@ void StatisticCollector::logLoadAverage(std::string name) {
         }
     }
 }
+
+// Memory-based partitioning functions
+long StatisticCollector::getAvailableMemoryPerCore() {
+    long totalMemory = getTotalMemoryAllocated(); // in KB
+    int cores = getTotalNumberofCores();
+    
+    if (cores <= 0) return 0;
+    
+    return (totalMemory * 1024) / cores; // Convert to bytes and divide by cores
+}
+
+double StatisticCollector::getMemoryUsagePercentage() {
+    long totalMem = getTotalMemoryAllocated();   // in KB
+    long usedMem = getTotalMemoryUsage();        // in KB
+    
+    if (totalMem <= 0) return -1.0;             // avoid division by zero
+    
+    return (usedMem / (double)totalMem);
+}
+
+long StatisticCollector::getAvailableMemory() {
+    long totalMem = getTotalMemoryAllocated();   // in KB
+    long usedMem = getTotalMemoryUsage();        // in KB
+    
+    return (totalMem - usedMem) * 1024; // Convert to bytes and return free memory
+}

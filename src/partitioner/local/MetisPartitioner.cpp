@@ -12,11 +12,13 @@ limitations under the License.
  */
 
 #include "MetisPartitioner.h"
+#include "MemoryBasedPartitioner.h"
 
 #include <flatbuffers/flatbuffers.h>
 
 #include "../../util/Conts.h"
 #include "../../util/logger/Logger.h"
+#include "../../util/GraphSizeEstimator.h"
 
 Logger partitioner_logger;
 std::mutex partFileMutex;
@@ -1061,5 +1063,23 @@ void MetisPartitioner::writeSerializedCompositeMasterFiles(std::string part) {
     }
     masterFileMutex.unlock();
     partitioner_logger.log("Serializing done for central part " + part, "info");
+}
+
+std::vector<std::map<int, std::string>> MetisPartitioner::memoryBasedPartition(string graphFilePath) {
+    partitioner_logger.log("Starting memory-based partitioning", "info");
+    
+    // Create memory-based partitioner
+    MemoryBasedPartitioner memoryPartitioner(this->sqlite);
+    
+    // Estimate graph size from file
+    long graphSize = GraphSizeEstimator::estimateFromFile(graphFilePath);
+    partitioner_logger.log("Estimated graph size: " + to_string(graphSize) + " bytes", "info");
+    
+    // Calculate partition count based on memory constraints
+    int calculatedPartitions = memoryPartitioner.calculatePartitionCount(to_string(this->graphID), graphSize);
+    partitioner_logger.log("Memory-based partition count: " + to_string(calculatedPartitions), "info");
+    
+    // Use METIS to partition the graph into the calculated number of partitions
+    return partitioneWithGPMetis(to_string(calculatedPartitions));
 }
 
