@@ -171,12 +171,5 @@ bool GraphSizeEstimator::parseGraphFile(const string& filePath, long& vertexCoun
 }
 
 long GraphSizeEstimator::calculateOverhead(long baseSize) {
-    // Graph processing overhead includes:
-    // - Hash tables/maps for vertex lookups
-    // - Temporary data structures during algorithms
-    // - Memory fragmentation
-    // - JVM/runtime overhead (if applicable)
-    
-    // Conservative estimate: 50% overhead
     return baseSize / 2;
 }

@@ -160,7 +160,7 @@ int MemoryBasedPartitioner::getWorkerCoreCount(const string& hostname) {
     // This is a simplified implementation - in production, you'd want to store and retrieve
     // actual core counts from worker nodes
     
-    string sqlStatement = "SELECT server_port FROM worker WHERE ip = '" + hostname + "' LIMIT 1";
+    string sqlStatement = "SELECT server_data_port FROM worker WHERE ip = '" + hostname + "' LIMIT 1";
     vector<vector<pair<string, string>>> result = sqlite->runSelect(sqlStatement);
     
     if (result.empty()) {
@@ -175,7 +175,7 @@ int MemoryBasedPartitioner::getWorkerCoreCount(const string& hostname) {
 vector<string> MemoryBasedPartitioner::getActiveWorkers() {
     vector<string> workers;
     
-    string sqlStatement = "SELECT DISTINCT ip FROM worker WHERE is_active = 1";
+    string sqlStatement = "SELECT DISTINCT ip FROM worker";
     vector<vector<pair<string, string>>> result = sqlite->runSelect(sqlStatement);
     
     for (const auto& row : result) {
