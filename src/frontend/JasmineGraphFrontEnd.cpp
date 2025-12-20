@@ -33,6 +33,7 @@ limitations under the License.
 #include "../nativestore/DataPublisher.h"
 #include "../nativestore/RelationBlock.h"
 #include "../partitioner/local/JSONParser.h"
+#include "../partitioner/local/LabelPropagationPartitioner.h"
 #include "../partitioner/local/MetisPartitioner.h"
 #include "../partitioner/local/RDFParser.h"
 #include "../partitioner/local/RDFPartitioner.h"
@@ -93,6 +94,7 @@ static void semanticBeamSearch(std::string masterIP, int connFd, vector<DataPubl
 static void add_rdf_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p);
 static void add_graph_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p);
 static void add_graph_cust_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p);
+static void add_graph_lpa_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p);
 static void remove_graph_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p);
 static void add_model_command(int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p);
 static void add_stream_kafka_command(int connFd, std::string &kafka_server_IP, cppkafka::Configuration &configs,
@@ -220,6 +222,8 @@ void *frontendservicesesion(void *dummyPt) {
             add_model_command(connFd, sqlite, &loop_exit);
         } else if (line.compare(ADGR_CUST) == 0) {
             add_graph_cust_command(masterIP, connFd, sqlite, &loop_exit);
+        } else if (line.compare(ADGR_LPA) == 0) {
+            add_graph_lpa_command(masterIP, connFd, sqlite, &loop_exit);
         } else if (line.compare(ADD_STREAM_KAFKA) == 0) {
             if (!workerClientsInitialized) {
                 workerClients = getWorkerClients(sqlite);
@@ -895,6 +899,89 @@ static void add_graph_command(std::string masterIP, int connFd, SQLiteDBInterfac
         server->uploadGraphLocally(newGraphID, Conts::GRAPH_TYPE_NORMAL, fullFileList, masterIP);
         Utils::deleteDirectory(Utils::getHomeDir() + "/.jasminegraph/tmp/" + to_string(newGraphID));
         JasmineGraphFrontEndCommon::getAndUpdateUploadTime(to_string(newGraphID), sqlite);
+        int result_wr = write(connFd, DONE.c_str(), DONE.size());
+        if (result_wr < 0) {
+            frontend_logger.error("Error writing to socket");
+            *loop_exit_p = true;
+            return;
+        }
+        result_wr = write(connFd, Conts::CARRIAGE_RETURN_NEW_LINE.c_str(), Conts::CARRIAGE_RETURN_NEW_LINE.size());
+        if (result_wr < 0) {
+            frontend_logger.error("Error writing to socket");
+            *loop_exit_p = true;
+        }
+    } else {
+        frontend_logger.error("Graph data file does not exist on the specified path");
+    }
+}
+
+static void add_graph_lpa_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p) {
+    int result_wr = write(connFd, SEND.c_str(), FRONTEND_COMMAND_LENGTH);
+    if (result_wr < 0) {
+        frontend_logger.error("Error writing to socket");
+        *loop_exit_p = true;
+        return;
+    }
+    result_wr = write(connFd, Conts::CARRIAGE_RETURN_NEW_LINE.c_str(), Conts::CARRIAGE_RETURN_NEW_LINE.size());
+    if (result_wr < 0) {
+        frontend_logger.error("Error writing to socket");
+        *loop_exit_p = true;
+        return;
+    }
+
+    char graph_data[FRONTEND_DATA_LENGTH + 1];
+    bzero(graph_data, FRONTEND_DATA_LENGTH + 1);
+    string name = "";
+    string path = "";
+
+    read(connFd, graph_data, FRONTEND_DATA_LENGTH);
+
+    std::time_t time = chrono::system_clock::to_time_t(chrono::system_clock::now());
+    string uploadStartTime = ctime(&time);
+    string gData(graph_data);
+
+    gData = Utils::trim_copy(gData);
+    frontend_logger.info("Data received: " + gData);
+
+    std::vector<std::string> strArr = Utils::split(gData, '|');
+
+    if (strArr.size() < 2) {
+        frontend_logger.error("Message format not recognized");
+        return;
+    }
+
+    name = strArr[0];
+    path = strArr[1];
+
+    if (JasmineGraphFrontEndCommon::graphExists(path, sqlite)) {
+        frontend_logger.error("Graph exists");
+        return;
+    }
+
+    if (Utils::fileExists(path)) {
+        frontend_logger.info("Path exists");
+
+        string sqlStatement =
+            "INSERT INTO graph (name,upload_path,upload_start_time,upload_end_time,graph_status_idgraph_status,"
+            "vertexcount,centralpartitioncount,edgecount) VALUES(\"" +
+            name + "\", \"" + path + "\", \"" + uploadStartTime + "\", \"\",\"" +
+            to_string(Conts::GRAPH_STATUS::LOADING) + "\", \"\", \"\", \"\")";
+        int newGraphID = sqlite->runInsert(sqlStatement);
+        LabelPropagationPartitioner lpaPartitioner(sqlite);
+        vector<std::map<int, string>> fullFileList;
+
+        lpaPartitioner.loadDataSet(path, newGraphID);
+        fullFileList = lpaPartitioner.partition();
+        
+        int partitionCount = lpaPartitioner.getPartitionCount();
+        frontend_logger.info("Label propagation found " + to_string(partitionCount) + " partitions");
+        
+        frontend_logger.info("Upload done");
+        JasmineGraphServer *server = JasmineGraphServer::getInstance();
+        server->uploadGraphLocally(newGraphID, Conts::GRAPH_TYPE_NORMAL, fullFileList, masterIP);
+        Utils::deleteDirectory(Utils::getHomeDir() + "/.jasminegraph/tmp/" + to_string(newGraphID));
+        JasmineGraphFrontEndCommon::getAndUpdateUploadTime(to_string(newGraphID), sqlite);
+        
         int result_wr = write(connFd, DONE.c_str(), DONE.size());
         if (result_wr < 0) {
             frontend_logger.error("Error writing to socket");

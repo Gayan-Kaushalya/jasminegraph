@@ -17,6 +17,7 @@ const string ADGR = "adgr";
 const string ADRDF = "adrdf";
 const string DONE = "done";
 const string ADGR_CUST = "adgr-cust";
+const string ADGR_LPA = "adgr-lpa";
 const string RMGR = "rmgr";
 const string EXIT = "exit";
 const string LIST = "lst";
