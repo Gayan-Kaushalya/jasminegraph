@@ -219,8 +219,8 @@ vector<double> SpectralPartitioner::inversePowerIteration(const SparseMatrix &ma
     return x;
 }
 
-double SpectralPartitioner::rayleighQuotient(const SparseMatrix &matrix, const vector<double> &vector) {
-    vector<double> Ax(matrix.numRows);
+double SpectralPartitioner::rayleighQuotient(const SparseMatrix &matrix, const std::vector<double> &vector) {
+    std::vector<double> Ax(matrix.numRows);
     matrix.multiply(vector, Ax);
 
     double numerator = dotProduct(vector, Ax);
