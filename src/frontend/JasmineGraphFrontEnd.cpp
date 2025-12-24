@@ -1024,6 +1024,9 @@ static void add_graph_spectral_command(std::string masterIP, int connFd, SQLiteD
             // Create central store files (required by uploadGraphLocally)
             std::map<int, string> centralStoreFiles;
             std::map<int, string> centralStoreDuplicateFiles;
+            std::map<int, string> attributeFiles;  // Empty for non-attribute graphs
+            std::map<int, string> centralStoreAttributeFiles;  // Empty for non-attribute graphs
+            std::map<int, string> compositeCentralStoreFiles;  // Empty for non-composite graphs
             string tmpDir = Utils::getHomeDir() + "/.jasminegraph/tmp/" + to_string(newGraphID);
             
             for (int i = 0; i < numPartitions; ++i) {
@@ -1039,10 +1042,16 @@ static void add_graph_spectral_command(std::string masterIP, int connFd, SQLiteD
             }
             
             // Convert partition files map to the format expected by uploadGraphLocally
+            // Must match FileListIndex enum: PARTITION_FILES=0, CENTRAL_STORE_FILES=1, 
+            // CENTRAL_STORE_DUPLICATE_FILES=2, ATTRIBUTE_FILES=3, 
+            // CENTRAL_STORE_ATTRIBUTE_FILES=4, COMPOSITE_CENTRAL_STORE_FILES=5
             vector<std::map<int, string>> fullFileList;
-            fullFileList.push_back(partitionFiles);
-            fullFileList.push_back(centralStoreFiles);
-            fullFileList.push_back(centralStoreDuplicateFiles);
+            fullFileList.push_back(partitionFiles);                    // 0: PARTITION_FILES
+            fullFileList.push_back(centralStoreFiles);                 // 1: CENTRAL_STORE_FILES
+            fullFileList.push_back(centralStoreDuplicateFiles);        // 2: CENTRAL_STORE_DUPLICATE_FILES
+            fullFileList.push_back(attributeFiles);                    // 3: ATTRIBUTE_FILES (empty)
+            fullFileList.push_back(centralStoreAttributeFiles);        // 4: CENTRAL_STORE_ATTRIBUTE_FILES (empty)
+            fullFileList.push_back(compositeCentralStoreFiles);        // 5: COMPOSITE_CENTRAL_STORE_FILES (empty)
             
             frontend_logger.info("Uploading partitioned graph locally");
             JasmineGraphServer *server = JasmineGraphServer::getInstance();
