@@ -1009,6 +1009,18 @@ static void add_graph_spectral_command(std::string masterIP, int connFd, SQLiteD
             frontend_logger.info("Saving partitions to files");
             std::map<int, std::string> partitionFiles = partitioner.savePartitions(partitionAssignment);
             
+            // Update metadata with vertex count, edge count, and partition count
+            int vertexCount = partitioner.getVertexCount();
+            int edgeCount = partitioner.getEdgeCount();
+            string metadataUpdate = "UPDATE graph SET vertexcount = '" + std::to_string(vertexCount) +
+                                   "', centralpartitioncount = '" + std::to_string(numPartitions) + 
+                                   "', edgecount = '" + std::to_string(edgeCount) + 
+                                   "' WHERE idgraph = '" + std::to_string(newGraphID) + "'";
+            sqlite->runUpdate(metadataUpdate);
+            frontend_logger.info("Updated graph metadata: vertices=" + to_string(vertexCount) + 
+                               ", edges=" + to_string(edgeCount) + 
+                               ", partitions=" + to_string(numPartitions));
+            
             // Convert partition files map to the format expected by uploadGraphLocally
             vector<std::map<int, string>> fullFileList;
             fullFileList.push_back(partitionFiles);
@@ -1020,7 +1032,7 @@ static void add_graph_spectral_command(std::string masterIP, int connFd, SQLiteD
             Utils::deleteDirectory(Utils::getHomeDir() + "/.jasminegraph/tmp/" + to_string(newGraphID));
             JasmineGraphFrontEndCommon::getAndUpdateUploadTime(to_string(newGraphID), sqlite);
             
-            frontend_logger.info("Spectral partitioning upload done");
+            frontend_logger.info("Spectral partitioning completed successfully for graph ID: " + to_string(newGraphID));
             
             result_wr = write(connFd, DONE.c_str(), DONE.size());
             if (result_wr < 0) {
