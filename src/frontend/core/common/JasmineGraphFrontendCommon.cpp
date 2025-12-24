@@ -225,7 +225,7 @@ std::string JasmineGraphFrontEndCommon::readAndProcessInput(int connFd, char* da
 
 std::string JasmineGraphFrontEndCommon::getPartitionCount(std::string path) {
     if (Utils::getJasmineGraphProperty("org.jasminegraph.autopartition.enabled") != "true") {
-        return "";
+        return "2";
     }
     ifstream dataFile(path);
     size_t edges = std::count(std::istreambuf_iterator<char>(dataFile), std::istreambuf_iterator<char>(), '\n');

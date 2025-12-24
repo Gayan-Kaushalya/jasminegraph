@@ -978,7 +978,30 @@ static void add_graph_spectral_command(std::string masterIP, int connFd, SQLiteD
             frontend_logger.info("Loading graph with ID: " + to_string(newGraphID));
             partitioner.loadGraph(path, newGraphID);
             
-            int numPartitions = std::stoi(partitionCount);
+            // Use eigengap heuristics to determine optimal number of partitions
+            int maxK = 16;  // Maximum number of partitions to consider
+            // if (!partitionCount.empty()) {
+            //     try {
+            //         maxK = std::stoi(partitionCount);
+            //         if (maxK <= 0) {
+            //             frontend_logger.warn("Invalid partition count provided, using default maxK=16");
+            //             maxK = 16;
+            //         }
+            //     } catch (...) {
+            //         frontend_logger.warn("Could not parse partition count, using default maxK=16");
+            //         maxK = 16;
+            //     }
+            // }
+            
+            // frontend_logger.info("Computing optimal number of partitions using eigengap heuristics (maxK=" + to_string(maxK) + ")");
+            int numPartitions = partitioner.computeOptimalK(maxK);
+            
+            if (numPartitions <= 0 || numPartitions > maxK) {
+                frontend_logger.warn("Eigengap heuristic returned invalid k=" + to_string(numPartitions) + ", using k=2");
+                numPartitions = 2;
+            }
+            
+            frontend_logger.info("Optimal partitions determined by eigengap: " + to_string(numPartitions));
             frontend_logger.info("Starting spectral partitioning with " + to_string(numPartitions) + " partitions");
             
             vector<int> partitionAssignment = partitioner.partition(numPartitions);
