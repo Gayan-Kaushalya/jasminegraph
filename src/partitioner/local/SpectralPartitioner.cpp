@@ -414,6 +414,12 @@ std::map<int, std::string> SpectralPartitioner::savePartitions(const vector<int>
         numPartitions = std::max(numPartitions, p + 1);
     }
 
+    // Track statistics for each partition
+    std::vector<int> partitionVertexCount(numPartitions, 0);
+    std::vector<int> partitionEdgeCount(numPartitions, 0);
+    std::vector<std::set<int>> partitionVertices(numPartitions);
+    std::vector<int> edgeCutCount(numPartitions, 0);  // Track cross-partition edges
+
     // Open output files with graphID_partitionID naming convention
     for (int i = 0; i < numPartitions; ++i) {
         string filename = outputFilePath + "/" + std::to_string(graphID) + "_" + std::to_string(i);
@@ -421,16 +427,29 @@ std::map<int, std::string> SpectralPartitioner::savePartitions(const vector<int>
         outFiles[i].open(filename);
     }
 
-    // Write edges to partition files
+    // Write edges to partition files and collect statistics
     for (const auto &entry : adjList) {
         int src = entry.first;
-        int partition = partitionAssignment[src];
+        int srcPartition = partitionAssignment[src];
+        
+        // Track vertices in this partition
+        partitionVertices[srcPartition].insert(src);
 
         for (int dst : entry.second) {
+            int dstPartition = partitionAssignment[dst];
+            
             if (src <= dst) {  // Avoid duplicate edges in undirected graph
                 int originalSrc = reverseVertexMap[src];
                 int originalDst = reverseVertexMap[dst];
-                outFiles[partition] << originalSrc << " " << originalDst << "\n";
+                outFiles[srcPartition] << originalSrc << " " << originalDst << "\n";
+                
+                // Count edge for this partition
+                partitionEdgeCount[srcPartition]++;
+                
+                // Count edge cuts (cross-partition edges)
+                if (srcPartition != dstPartition) {
+                    edgeCutCount[srcPartition]++;
+                }
             }
         }
     }
@@ -438,6 +457,37 @@ std::map<int, std::string> SpectralPartitioner::savePartitions(const vector<int>
     // Close files
     for (auto &file : outFiles) {
         file.second.close();
+    }
+
+    // Update partition table in metadb
+    spectral_logger.log("Updating partition table in metadb", "info");
+    for (int i = 0; i < numPartitions; ++i) {
+        partitionVertexCount[i] = partitionVertices[i].size();
+        
+        // For spectral partitioning, all vertices are local (no central store concept)
+        int centralVertexCount = 0;
+        
+        // Insert initial partition data
+        string sqlStatement =
+            "INSERT INTO partition (idpartition, graph_idgraph, vertexcount, central_vertexcount, edgecount) VALUES(\"" +
+            std::to_string(i) + "\", \"" + std::to_string(graphID) + "\", \"" +
+            std::to_string(partitionVertexCount[i]) + "\", \"" + std::to_string(centralVertexCount) + "\", \"" +
+            std::to_string(partitionEdgeCount[i]) + "\")";
+        
+        sqlite->runUpdate(sqlStatement);
+        
+        // Update edge cut information
+        string updateStatement = "UPDATE partition SET central_edgecount = '" + std::to_string(edgeCutCount[i]) +
+                               "', central_edgecount_with_dups = '" + std::to_string(edgeCutCount[i]) +
+                               "' WHERE graph_idgraph = '" + std::to_string(graphID) + 
+                               "' AND idpartition = '" + std::to_string(i) + "'";
+        
+        sqlite->runUpdate(updateStatement);
+        
+        spectral_logger.log("Partition " + std::to_string(i) + ": vertices=" + 
+                          std::to_string(partitionVertexCount[i]) + ", edges=" + 
+                          std::to_string(partitionEdgeCount[i]) + ", edge_cuts=" +
+                          std::to_string(edgeCutCount[i]), "info");
     }
 
     spectral_logger.log("Partitions saved to " + std::to_string(numPartitions) + " files", "info");
