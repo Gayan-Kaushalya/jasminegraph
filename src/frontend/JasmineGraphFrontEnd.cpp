@@ -36,6 +36,7 @@ limitations under the License.
 #include "../partitioner/local/MetisPartitioner.h"
 #include "../partitioner/local/RDFParser.h"
 #include "../partitioner/local/RDFPartitioner.h"
+#include "../partitioner/local/SpectralPartitioner.h"
 #include "../partitioner/stream/Partitioner.h"
 #include "../performance/metrics/PerformanceUtil.h"
 #include "../query/algorithms/linkprediction/JasminGraphLinkPredictor.h"
@@ -93,6 +94,7 @@ static void semanticBeamSearch(std::string masterIP, int connFd, vector<DataPubl
 static void add_rdf_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p);
 static void add_graph_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p);
 static void add_graph_cust_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p);
+static void add_graph_spectral_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p);
 static void remove_graph_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p);
 static void add_model_command(int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p);
 static void add_stream_kafka_command(int connFd, std::string &kafka_server_IP, cppkafka::Configuration &configs,
@@ -216,6 +218,8 @@ void *frontendservicesesion(void *dummyPt) {
             add_rdf_command(masterIP, connFd, sqlite, &loop_exit);
         } else if (line.compare(ADGR) == 0) {
             add_graph_command(masterIP, connFd, sqlite, &loop_exit);
+        } else if (line.compare(ADSP) == 0) {
+            add_graph_spectral_command(masterIP, connFd, sqlite, &loop_exit);
         } else if (line.compare(ADMDL) == 0) {
             add_model_command(connFd, sqlite, &loop_exit);
         } else if (line.compare(ADGR_CUST) == 0) {
@@ -908,6 +912,114 @@ static void add_graph_command(std::string masterIP, int connFd, SQLiteDBInterfac
         }
     } else {
         frontend_logger.error("Graph data file does not exist on the specified path");
+    }
+}
+
+static void add_graph_spectral_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p) {
+    int result_wr = write(connFd, SEND.c_str(), FRONTEND_COMMAND_LENGTH);
+    if (result_wr < 0) {
+        frontend_logger.error("Error writing to socket");
+        *loop_exit_p = true;
+        return;
+    }
+    result_wr = write(connFd, Conts::CARRIAGE_RETURN_NEW_LINE.c_str(), Conts::CARRIAGE_RETURN_NEW_LINE.size());
+    if (result_wr < 0) {
+        frontend_logger.error("Error writing to socket");
+        *loop_exit_p = true;
+        return;
+    }
+
+    // We get the name and the path to graph as a pair separated by |.
+    char graph_data[FRONTEND_DATA_LENGTH + 1];
+    bzero(graph_data, FRONTEND_DATA_LENGTH + 1);
+    string name = "";
+    string path = "";
+    string partitionCount = "";
+
+    read(connFd, graph_data, FRONTEND_DATA_LENGTH);
+
+    std::time_t time = chrono::system_clock::to_time_t(chrono::system_clock::now());
+    string uploadStartTime = ctime(&time);
+    string gData(graph_data);
+
+    gData = Utils::trim_copy(gData);
+    frontend_logger.info("Data received: " + gData);
+
+    std::vector<std::string> strArr = Utils::split(gData, '|');
+
+    if (strArr.size() < 2) {
+        frontend_logger.error("Message format not recognized");
+        return;
+    }
+
+    name = strArr[0];
+    path = strArr[1];
+
+    partitionCount = JasmineGraphFrontEndCommon::getPartitionCount(path);
+
+    if (JasmineGraphFrontEndCommon::graphExists(path, sqlite)) {
+        frontend_logger.error("Graph exists");
+        return;
+    }
+
+    if (Utils::fileExists(path)) {
+        frontend_logger.info("Path exists - using Spectral Partitioning");
+
+        string sqlStatement =
+            "INSERT INTO graph (name,upload_path,upload_start_time,upload_end_time,graph_status_idgraph_status,"
+            "vertexcount,centralpartitioncount,edgecount) VALUES(\"" +
+            name + "\", \"" + path + "\", \"" + uploadStartTime + "\", \"\",\"" +
+            to_string(Conts::GRAPH_STATUS::LOADING) + "\", \"\", \"\", \"\")";
+        int newGraphID = sqlite->runInsert(sqlStatement);
+        
+        SpectralPartitioner partitioner(sqlite);
+        
+        try {
+            frontend_logger.info("Loading graph with ID: " + to_string(newGraphID));
+            partitioner.loadGraph(path, newGraphID);
+            
+            int numPartitions = std::stoi(partitionCount);
+            frontend_logger.info("Starting spectral partitioning with " + to_string(numPartitions) + " partitions");
+            
+            vector<int> partitionAssignment = partitioner.partition(numPartitions);
+            
+            frontend_logger.info("Saving partitions to files");
+            std::map<int, std::string> partitionFiles = partitioner.savePartitions(partitionAssignment);
+            
+            // Convert partition files map to the format expected by uploadGraphLocally
+            vector<std::map<int, string>> fullFileList;
+            fullFileList.push_back(partitionFiles);
+            
+            frontend_logger.info("Uploading partitioned graph locally");
+            JasmineGraphServer *server = JasmineGraphServer::getInstance();
+            server->uploadGraphLocally(newGraphID, Conts::GRAPH_TYPE_NORMAL, fullFileList, masterIP);
+            
+            Utils::deleteDirectory(Utils::getHomeDir() + "/.jasminegraph/tmp/" + to_string(newGraphID));
+            JasmineGraphFrontEndCommon::getAndUpdateUploadTime(to_string(newGraphID), sqlite);
+            
+            frontend_logger.info("Spectral partitioning upload done");
+            
+            result_wr = write(connFd, DONE.c_str(), DONE.size());
+            if (result_wr < 0) {
+                frontend_logger.error("Error writing to socket");
+                *loop_exit_p = true;
+                return;
+            }
+            result_wr = write(connFd, Conts::CARRIAGE_RETURN_NEW_LINE.c_str(), Conts::CARRIAGE_RETURN_NEW_LINE.size());
+            if (result_wr < 0) {
+                frontend_logger.error("Error writing to socket");
+                *loop_exit_p = true;
+            }
+        } catch (const std::exception& e) {
+            frontend_logger.error("Error during spectral partitioning: " + string(e.what()));
+            string errorMsg = "ERROR: Spectral partitioning failed\r\n";
+            write(connFd, errorMsg.c_str(), errorMsg.size());
+            *loop_exit_p = true;
+        }
+    } else {
+        frontend_logger.error("Graph data file does not exist on the specified path");
+        string errorMsg = "ERROR: File does not exist\r\n";
+        write(connFd, errorMsg.c_str(), errorMsg.size());
     }
 }
 
