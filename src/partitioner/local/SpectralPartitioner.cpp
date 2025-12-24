@@ -414,9 +414,9 @@ std::map<int, std::string> SpectralPartitioner::savePartitions(const vector<int>
         numPartitions = std::max(numPartitions, p + 1);
     }
 
-    // Open output files
+    // Open output files with graphID_partitionID naming convention
     for (int i = 0; i < numPartitions; ++i) {
-        string filename = outputFilePath + "/partition_" + std::to_string(i) + ".txt";
+        string filename = outputFilePath + "/" + std::to_string(graphID) + "_" + std::to_string(i);
         partitionFiles[i] = filename;
         outFiles[i].open(filename);
     }

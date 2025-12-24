@@ -1021,9 +1021,28 @@ static void add_graph_spectral_command(std::string masterIP, int connFd, SQLiteD
                                ", edges=" + to_string(edgeCount) + 
                                ", partitions=" + to_string(numPartitions));
             
+            // Create central store files (required by uploadGraphLocally)
+            std::map<int, string> centralStoreFiles;
+            std::map<int, string> centralStoreDuplicateFiles;
+            string tmpDir = Utils::getHomeDir() + "/.jasminegraph/tmp/" + to_string(newGraphID);
+            
+            for (int i = 0; i < numPartitions; ++i) {
+                // Create empty central store files
+                string centralFile = tmpDir + "/" + to_string(newGraphID) + "_centralstore_" + to_string(i);
+                string duplicateFile = tmpDir + "/" + to_string(newGraphID) + "_centralstore_dp_" + to_string(i);
+                
+                std::ofstream(centralFile).close();
+                std::ofstream(duplicateFile).close();
+                
+                centralStoreFiles[i] = centralFile;
+                centralStoreDuplicateFiles[i] = duplicateFile;
+            }
+            
             // Convert partition files map to the format expected by uploadGraphLocally
             vector<std::map<int, string>> fullFileList;
             fullFileList.push_back(partitionFiles);
+            fullFileList.push_back(centralStoreFiles);
+            fullFileList.push_back(centralStoreDuplicateFiles);
             
             frontend_logger.info("Uploading partitioned graph locally");
             JasmineGraphServer *server = JasmineGraphServer::getInstance();
