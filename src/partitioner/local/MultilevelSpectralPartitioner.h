@@ -37,6 +37,8 @@ struct MultilevelConfig {
     int maxCoarsenLevels = 10;         // Maximum coarsening iterations
     bool useParallelMatching = true;   // Enable parallel heavy edge matching
     bool useBalancedClustering = true; // Use balanced k-means instead of standard
+    bool skipEigengapForSmallGraphs = true;  // Skip eigengap for very small coarse graphs
+    int eigengapSkipThreshold = 5000;  // Graph size below which to use fixed k instead of eigengap
 };
 
 /**

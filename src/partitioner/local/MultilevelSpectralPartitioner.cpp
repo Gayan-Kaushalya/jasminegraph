@@ -329,7 +329,8 @@ std::unordered_map<int, vector<int>> MultilevelSpectralPartitioner::convertToAdj
 }
 
 vector<int> MultilevelSpectralPartitioner::initialPartition(const CoarseGraph &coarseGraph, int numPartitions) {
-    multilevel_logger.log("Computing initial partition on coarsest graph", "info");
+    multilevel_logger.log("Computing initial partition on coarsest graph (n=" + 
+                         std::to_string(coarseGraph.numVertices) + ")", "info");
     
     auto startTime = std::chrono::high_resolution_clock::now();
     
@@ -356,9 +357,16 @@ vector<int> MultilevelSpectralPartitioner::initialPartition(const CoarseGraph &c
     // Determine k using eigengap if not specified
     int k = numPartitions;
     if (k == 0) {
-        k = spectral.computeOptimalK(config.maxK);
-        multilevel_logger.log("Eigengap heuristic selected k=" + std::to_string(k), "info");
-        eigenvalues = spectral.getEigenvalues();
+        // Skip eigengap for very small graphs (faster)
+        if (config.skipEigengapForSmallGraphs && coarseGraph.numVertices < config.eigengapSkipThreshold) {
+            k = std::min(4, coarseGraph.numVertices / 100 + 2);  // Simple heuristic
+            multilevel_logger.log("Small graph detected, using fixed k=" + std::to_string(k) + 
+                                " (skipping eigengap)", "info");
+        } else {
+            k = spectral.computeOptimalK(config.maxK);
+            multilevel_logger.log("Eigengap heuristic selected k=" + std::to_string(k), "info");
+            eigenvalues = spectral.getEigenvalues();
+        }
     }
     
     // Run spectral partitioning

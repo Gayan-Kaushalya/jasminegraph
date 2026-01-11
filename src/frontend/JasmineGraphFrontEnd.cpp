@@ -1147,7 +1147,7 @@ static void add_graph_multilevel_spectral_command(std::string masterIP, int conn
             to_string(Conts::GRAPH_STATUS::LOADING) + "\", \"\", \"\", \"\")";
         int newGraphID = sqlite->runInsert(sqlStatement);
         
-        // Configure multilevel partitioner
+        // Configure multilevel partitioner with optimized settings
         MultilevelConfig config;
         config.coarseLimit = 20000;           // Stop coarsening at 20K vertices
         config.maxK = 16;                     // Max partitions to consider
@@ -1155,6 +1155,8 @@ static void add_graph_multilevel_spectral_command(std::string masterIP, int conn
         config.maxCoarsenLevels = 10;         // Max coarsening levels
         config.useParallelMatching = true;    // Enable OpenMP if available
         config.useBalancedClustering = true;  // Use balanced k-means
+        config.skipEigengapForSmallGraphs = true;  // Skip eigengap for small graphs
+        config.eigengapSkipThreshold = 5000;  // Threshold for skipping eigengap
         
         MultilevelSpectralPartitioner partitioner(sqlite, config);
         

@@ -6,6 +6,7 @@ RUN apt-get install libcurl4-openssl-dev -y
 RUN apt-get install -y sysstat
 RUN apt-get install -y nmon
 RUN apt-get install -y python3-setuptools
+RUN apt-get install -y libeigen3-dev
 
 RUN ln -sf /usr/bin/python3.8 /usr/bin/python3
 

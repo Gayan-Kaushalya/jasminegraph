@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <chrono>
 #include <fstream>
 #include <iostream>
 #include <limits>
@@ -230,7 +231,13 @@ double SpectralPartitioner::rayleighQuotient(const SparseMatrix &matrix, const s
 }
 
 void SpectralPartitioner::computeEigenvectors(const SparseMatrix &laplacian, int k) {
-    spectral_logger.log("Computing " + std::to_string(k) + " smallest eigenvectors", "info");
+#ifdef HAS_EIGEN
+    // Use fast Eigen-based solver if available
+    spectral_logger.log("Using Eigen library for fast eigenvalue computation", "info");
+    computeEigenvectorsEigen(laplacian, k);
+#else
+    // Fallback to power iteration
+    spectral_logger.log("Computing " + std::to_string(k) + " smallest eigenvectors using power iteration", "info");
 
     eigenvectors.clear();
     eigenvalues.clear();
@@ -254,7 +261,94 @@ void SpectralPartitioner::computeEigenvectors(const SparseMatrix &laplacian, int
             deflatedMatrix = deflate(deflatedMatrix, eigenvec, eigenval);
         }
     }
+#endif
 }
+
+#ifdef HAS_EIGEN
+void SpectralPartitioner::computeEigenvectorsEigen(const SparseMatrix &laplacian, int k) {
+    auto startTime = std::chrono::high_resolution_clock::now();
+    
+    // Convert custom SparseMatrix to Eigen format
+    int n = laplacian.numRows;
+    Eigen::SparseMatrix<double> eigenMat(n, n);
+    
+    // Estimate non-zeros
+    eigenMat.reserve(Eigen::VectorXi::Constant(n, 10));
+    
+    // Build triplet list for efficient construction
+    std::vector<Eigen::Triplet<double>> triplets;
+    triplets.reserve(laplacian.values.size());
+    
+    for (int i = 0; i < n; ++i) {
+        for (int j = laplacian.rowPointers[i]; j < laplacian.rowPointers[i + 1]; ++j) {
+            triplets.push_back(Eigen::Triplet<double>(i, laplacian.colIndices[j], laplacian.values[j]));
+        }
+    }
+    
+    eigenMat.setFromTriplets(triplets.begin(), triplets.end());
+    eigenMat.makeCompressed();
+    
+    auto conversionTime = std::chrono::high_resolution_clock::now();
+    auto conversionDuration = std::chrono::duration_cast<std::chrono::milliseconds>(conversionTime - startTime);
+    spectral_logger.log("Matrix conversion time: " + std::to_string(conversionDuration.count()) + " ms", "info");
+    
+    // Use Eigen's SelfAdjointEigenSolver for dense matrices if small enough
+    // Or use iterative methods for large sparse matrices
+    eigenvectors.clear();
+    eigenvalues.clear();
+    
+    if (n < 5000) {
+        // For small matrices, use dense solver (most reliable)
+        spectral_logger.log("Using dense eigensolver for small matrix (n=" + std::to_string(n) + ")", "info");
+        Eigen::MatrixXd denseMat = Eigen::MatrixXd(eigenMat);
+        Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> solver(denseMat);
+        
+        // Get smallest k eigenvalues and eigenvectors
+        for (int i = 0; i < k && i < n; ++i) {
+            eigenvalues.push_back(solver.eigenvalues()[i]);
+            
+            vector<double> eigenvec(n);
+            for (int j = 0; j < n; ++j) {
+                eigenvec[j] = solver.eigenvectors().col(i)[j];
+            }
+            eigenvectors.push_back(eigenvec);
+            
+            spectral_logger.log("Eigenvalue " + std::to_string(i + 1) + ": " + 
+                              std::to_string(eigenvalues[i]), "info");
+        }
+    } else {
+        // For large matrices, use Spectra library (header-only, works with Eigen)
+        // Fallback to power iteration if Spectra not available
+        spectral_logger.log("Large matrix detected (n=" + std::to_string(n) + 
+                          "), falling back to power iteration", "info");
+        
+        // Call the original power iteration method
+        eigenvectors.clear();
+        eigenvalues.clear();
+        
+        SparseMatrix deflatedMatrix = laplacian;
+        for (int i = 0; i < k; ++i) {
+            vector<double> eigenvec = inversePowerIteration(deflatedMatrix, 100, 1e-6);
+            double eigenval = rayleighQuotient(laplacian, eigenvec);
+            
+            eigenvectors.push_back(eigenvec);
+            eigenvalues.push_back(eigenval);
+            
+            spectral_logger.log("Eigenvalue " + std::to_string(i + 1) + ": " + 
+                              std::to_string(eigenval), "info");
+            
+            if (i < k - 1) {
+                deflatedMatrix = deflate(deflatedMatrix, eigenvec, eigenval);
+            }
+        }
+    }
+    
+    auto endTime = std::chrono::high_resolution_clock::now();
+    auto totalDuration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+    spectral_logger.log("Total Eigen eigenvalue computation time: " + 
+                       std::to_string(totalDuration.count()) + " ms", "info");
+}
+#endif
 
 SparseMatrix SpectralPartitioner::deflate(const SparseMatrix &matrix, const vector<double> &eigenvector,
                                           double eigenvalue) {
