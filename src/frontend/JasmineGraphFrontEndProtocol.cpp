@@ -18,6 +18,7 @@ const string ADRDF = "adrdf";
 const string DONE = "done";
 const string ADGR_CUST = "adgr-cust";
 const string ADSP = "adsp";
+const string ADMLSP = "admlsp";  // Multilevel Spectral Partitioning
 const string RMGR = "rmgr";
 const string EXIT = "exit";
 const string LIST = "lst";

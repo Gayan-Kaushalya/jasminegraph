@@ -37,6 +37,7 @@ limitations under the License.
 #include "../partitioner/local/RDFParser.h"
 #include "../partitioner/local/RDFPartitioner.h"
 #include "../partitioner/local/SpectralPartitioner.h"
+#include "../partitioner/local/MultilevelSpectralPartitioner.h"
 #include "../partitioner/stream/Partitioner.h"
 #include "../performance/metrics/PerformanceUtil.h"
 #include "../query/algorithms/linkprediction/JasminGraphLinkPredictor.h"
@@ -95,6 +96,7 @@ static void add_rdf_command(std::string masterIP, int connFd, SQLiteDBInterface 
 static void add_graph_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p);
 static void add_graph_cust_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p);
 static void add_graph_spectral_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p);
+static void add_graph_multilevel_spectral_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p);
 static void remove_graph_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p);
 static void add_model_command(int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p);
 static void add_stream_kafka_command(int connFd, std::string &kafka_server_IP, cppkafka::Configuration &configs,
@@ -220,6 +222,8 @@ void *frontendservicesesion(void *dummyPt) {
             add_graph_command(masterIP, connFd, sqlite, &loop_exit);
         } else if (line.compare(ADSP) == 0) {
             add_graph_spectral_command(masterIP, connFd, sqlite, &loop_exit);
+        } else if (line.compare(ADMLSP) == 0) {
+            add_graph_multilevel_spectral_command(masterIP, connFd, sqlite, &loop_exit);
         } else if (line.compare(ADMDL) == 0) {
             add_model_command(connFd, sqlite, &loop_exit);
         } else if (line.compare(ADGR_CUST) == 0) {
@@ -1076,6 +1080,167 @@ static void add_graph_spectral_command(std::string masterIP, int connFd, SQLiteD
         } catch (const std::exception& e) {
             frontend_logger.error("Error during spectral partitioning: " + string(e.what()));
             string errorMsg = "ERROR: Spectral partitioning failed\r\n";
+            write(connFd, errorMsg.c_str(), errorMsg.size());
+            *loop_exit_p = true;
+        }
+    } else {
+        frontend_logger.error("Graph data file does not exist on the specified path");
+        string errorMsg = "ERROR: File does not exist\r\n";
+        write(connFd, errorMsg.c_str(), errorMsg.size());
+    }
+}
+
+static void add_graph_multilevel_spectral_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p) {
+    int result_wr = write(connFd, SEND.c_str(), FRONTEND_COMMAND_LENGTH);
+    if (result_wr < 0) {
+        frontend_logger.error("Error writing to socket");
+        *loop_exit_p = true;
+        return;
+    }
+    result_wr = write(connFd, Conts::CARRIAGE_RETURN_NEW_LINE.c_str(), Conts::CARRIAGE_RETURN_NEW_LINE.size());
+    if (result_wr < 0) {
+        frontend_logger.error("Error writing to socket");
+        *loop_exit_p = true;
+        return;
+    }
+
+    // We get the name and the path to graph as a pair separated by |.
+    char graph_data[FRONTEND_DATA_LENGTH + 1];
+    bzero(graph_data, FRONTEND_DATA_LENGTH + 1);
+    string name = "";
+    string path = "";
+    string partitionCount = "";
+
+    read(connFd, graph_data, FRONTEND_DATA_LENGTH);
+
+    std::time_t time = chrono::system_clock::to_time_t(chrono::system_clock::now());
+    string uploadStartTime = ctime(&time);
+    string gData(graph_data);
+
+    gData = Utils::trim_copy(gData);
+    frontend_logger.info("Data received: " + gData);
+
+    std::vector<std::string> strArr = Utils::split(gData, '|');
+
+    if (strArr.size() < 2) {
+        frontend_logger.error("Message format not recognized");
+        return;
+    }
+
+    name = strArr[0];
+    path = strArr[1];
+
+    partitionCount = JasmineGraphFrontEndCommon::getPartitionCount(path);
+
+    if (JasmineGraphFrontEndCommon::graphExists(path, sqlite)) {
+        frontend_logger.error("Graph exists");
+        return;
+    }
+
+    if (Utils::fileExists(path)) {
+        frontend_logger.info("Path exists - using Multilevel Spectral Partitioning");
+
+        string sqlStatement =
+            "INSERT INTO graph (name,upload_path,upload_start_time,upload_end_time,graph_status_idgraph_status,"
+            "vertexcount,centralpartitioncount,edgecount) VALUES(\"" +
+            name + "\", \"" + path + "\", \"" + uploadStartTime + "\", \"\",\"" +
+            to_string(Conts::GRAPH_STATUS::LOADING) + "\", \"\", \"\", \"\")";
+        int newGraphID = sqlite->runInsert(sqlStatement);
+        
+        // Configure multilevel partitioner
+        MultilevelConfig config;
+        config.coarseLimit = 20000;           // Stop coarsening at 20K vertices
+        config.maxK = 16;                     // Max partitions to consider
+        config.balanceEpsilon = 1.03;         // 3% imbalance tolerance
+        config.maxCoarsenLevels = 10;         // Max coarsening levels
+        config.useParallelMatching = true;    // Enable OpenMP if available
+        config.useBalancedClustering = true;  // Use balanced k-means
+        
+        MultilevelSpectralPartitioner partitioner(sqlite, config);
+        
+        try {
+            frontend_logger.info("Loading graph with ID: " + to_string(newGraphID));
+            partitioner.loadGraph(path, newGraphID);
+            
+            // Use automatic eigengap-based k selection
+            frontend_logger.info("Starting multilevel spectral partitioning with automatic k selection");
+            
+            vector<int> partitionAssignment = partitioner.partition(0);  // 0 = auto-detect k
+            
+            // Get actual number of partitions and other stats
+            int numPartitions = *std::max_element(partitionAssignment.begin(), partitionAssignment.end()) + 1;
+            int coarsenLevels = partitioner.getCoarsenLevels();
+            
+            frontend_logger.info("Multilevel partitioning complete: k=" + to_string(numPartitions) + 
+                               ", coarsening levels=" + to_string(coarsenLevels));
+            
+            frontend_logger.info("Saving partitions to files");
+            std::map<int, std::string> partitionFiles = partitioner.savePartitions(partitionAssignment);
+            
+            // Update metadata with vertex count, edge count, and partition count
+            int vertexCount = partitioner.getVertexCount();
+            int edgeCount = partitioner.getEdgeCount();
+            string metadataUpdate = "UPDATE graph SET vertexcount = '" + std::to_string(vertexCount) +
+                                   "', centralpartitioncount = '" + std::to_string(numPartitions) + 
+                                   "', edgecount = '" + std::to_string(edgeCount) + 
+                                   "' WHERE idgraph = '" + std::to_string(newGraphID) + "'";
+            sqlite->runUpdate(metadataUpdate);
+            frontend_logger.info("Updated graph metadata: vertices=" + to_string(vertexCount) + 
+                               ", edges=" + to_string(edgeCount) + 
+                               ", partitions=" + to_string(numPartitions));
+            
+            // Central store files are created by savePartitions() with proper boundary edges
+            std::map<int, string> centralStoreFiles;
+            std::map<int, string> centralStoreDuplicateFiles;
+            std::map<int, string> attributeFiles;  // Empty for non-attribute graphs
+            std::map<int, string> centralStoreAttributeFiles;  // Empty for non-attribute graphs
+            std::map<int, string> compositeCentralStoreFiles;  // Empty for non-composite graphs
+            string tmpDir = Utils::getHomeDir() + "/.jasminegraph/tmp/" + to_string(newGraphID);
+            
+            for (int i = 0; i < numPartitions; ++i) {
+                // Reference central store files created by partitioner
+                string centralFile = tmpDir + "/" + to_string(newGraphID) + "_centralstore_" + to_string(i) + ".txt";
+                string duplicateFile = tmpDir + "/" + to_string(newGraphID) + "_centralstore_dp_" + to_string(i);
+                
+                // Create empty duplicate file (used for duplicate edge tracking)
+                std::ofstream(duplicateFile).close();
+                
+                centralStoreFiles[i] = centralFile;
+                centralStoreDuplicateFiles[i] = duplicateFile;
+            }
+            
+            // Convert partition files map to the format expected by uploadGraphLocally
+            vector<std::map<int, string>> fullFileList;
+            fullFileList.push_back(partitionFiles);                    // 0: PARTITION_FILES
+            fullFileList.push_back(centralStoreFiles);                 // 1: CENTRAL_STORE_FILES
+            fullFileList.push_back(centralStoreDuplicateFiles);        // 2: CENTRAL_STORE_DUPLICATE_FILES
+            fullFileList.push_back(attributeFiles);                    // 3: ATTRIBUTE_FILES (empty)
+            fullFileList.push_back(centralStoreAttributeFiles);        // 4: CENTRAL_STORE_ATTRIBUTE_FILES (empty)
+            fullFileList.push_back(compositeCentralStoreFiles);        // 5: COMPOSITE_CENTRAL_STORE_FILES (empty)
+            
+            frontend_logger.info("Uploading partitioned graph locally");
+            JasmineGraphServer *server = JasmineGraphServer::getInstance();
+            server->uploadGraphLocally(newGraphID, Conts::GRAPH_TYPE_NORMAL, fullFileList, masterIP);
+            
+            Utils::deleteDirectory(Utils::getHomeDir() + "/.jasminegraph/tmp/" + to_string(newGraphID));
+            JasmineGraphFrontEndCommon::getAndUpdateUploadTime(to_string(newGraphID), sqlite);
+            
+            frontend_logger.info("Multilevel spectral partitioning completed successfully for graph ID: " + to_string(newGraphID));
+            
+            result_wr = write(connFd, DONE.c_str(), DONE.size());
+            if (result_wr < 0) {
+                frontend_logger.error("Error writing to socket");
+                *loop_exit_p = true;
+                return;
+            }
+            result_wr = write(connFd, Conts::CARRIAGE_RETURN_NEW_LINE.c_str(), Conts::CARRIAGE_RETURN_NEW_LINE.size());
+            if (result_wr < 0) {
+                frontend_logger.error("Error writing to socket");
+                *loop_exit_p = true;
+            }
+        } catch (const std::exception& e) {
+            frontend_logger.error("Error during multilevel spectral partitioning: " + string(e.what()));
+            string errorMsg = "ERROR: Multilevel spectral partitioning failed\r\n";
             write(connFd, errorMsg.c_str(), errorMsg.size());
             *loop_exit_p = true;
         }
