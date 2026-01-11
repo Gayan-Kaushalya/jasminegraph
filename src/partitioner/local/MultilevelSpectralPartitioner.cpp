@@ -21,6 +21,7 @@ limitations under the License.
 #include <numeric>
 #include <sstream>
 #include <chrono>
+#include <mutex>
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -547,6 +548,12 @@ std::map<int, std::string> MultilevelSpectralPartitioner::savePartitions(const v
     vector<int> centralEdgeCounts(numPartitions, 0);
     vector<std::set<int>> centralVertices(numPartitions);  // Track boundary vertices
     
+    // Count vertices per partition directly from assignment (O(n) instead of O(n log n))
+    vector<int> partitionVertexCount(numPartitions, 0);
+    for (int i = 0; i < vertexCount; ++i) {
+        partitionVertexCount[partitionAssignment[i]]++;
+    }
+    
     // Separate edges into local store (both vertices in same partition) 
     // and central store (vertices in different partitions)
     for (const auto &entry : adjList) {
@@ -631,6 +638,43 @@ std::map<int, std::string> MultilevelSpectralPartitioner::savePartitions(const v
                              std::to_string(localEdgeCounts[p]) + " local, " +
                              std::to_string(centralEdgeCounts[p]) + " central, " +
                              std::to_string(centralVertices[p].size()) + " boundary vertices", "info");
+    }
+    
+    // Update partition table in metadb
+    multilevel_logger.log("Updating partition table in metadb", "info");
+    std::mutex dbLock;
+    
+    for (int p = 0; p < numPartitions; ++p) {
+        int vertexCount = partitionVertexCount[p];
+        int centralVertexCount = centralVertices[p].size();
+        int localEdgeCount = localEdgeCounts[p];
+        int centralEdgeCount = centralEdgeCounts[p];
+        
+        // Insert initial partition data
+        string sqlStatement =
+            "INSERT INTO partition (idpartition, graph_idgraph, vertexcount, central_vertexcount, edgecount) VALUES(\"" +
+            std::to_string(p) + "\", \"" + std::to_string(graphID) + "\", \"" +
+            std::to_string(vertexCount) + "\", \"" + std::to_string(centralVertexCount) + "\", \"" +
+            std::to_string(localEdgeCount) + "\")";
+        
+        dbLock.lock();
+        sqlite->runUpdate(sqlStatement);
+        dbLock.unlock();
+        
+        // Update edge cut information
+        string updateStatement = "UPDATE partition SET central_edgecount = '" + std::to_string(centralEdgeCount) +
+                               "', central_edgecount_with_dups = '" + std::to_string(centralEdgeCount) +
+                               "' WHERE graph_idgraph = '" + std::to_string(graphID) + 
+                               "' AND idpartition = '" + std::to_string(p) + "'";
+        
+        dbLock.lock();
+        sqlite->runUpdate(updateStatement);
+        dbLock.unlock();
+        
+        multilevel_logger.log("  Inserted partition " + std::to_string(p) + " into metadb: vertices=" + 
+                            std::to_string(vertexCount) + ", central_vertices=" + std::to_string(centralVertexCount) +
+                            ", edges=" + std::to_string(localEdgeCount) + ", central_edges=" + 
+                            std::to_string(centralEdgeCount), "info");
     }
 
     multilevel_logger.log("Saved " + std::to_string(numPartitions) + " partition files with central stores", "info");
