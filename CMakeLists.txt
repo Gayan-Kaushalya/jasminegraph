@@ -39,6 +39,7 @@ set(HEADERS globals.h
         src/partitioner/local/JSONParser.h
         src/partitioner/local/MetisPartitioner.h
         src/partitioner/local/SpectralPartitioner.h
+        src/partitioner/local/MultilevelSpectralPartitioner.h
         src/partitioner/local/RDFParser.h
         src/partitioner/local/RDFPartitioner.h
         src/partitioner/stream/Partition.h
@@ -142,6 +143,7 @@ set(SOURCES src/backend/JasmineGraphBackend.cpp
         src/partitioner/local/JSONParser.cpp
         src/partitioner/local/MetisPartitioner.cpp
         src/partitioner/local/SpectralPartitioner.cpp
+        src/partitioner/local/MultilevelSpectralPartitioner.cpp
         src/partitioner/local/RDFParser.cpp
         src/partitioner/local/RDFPartitioner.cpp
         src/partitioner/stream/Partition.cpp
