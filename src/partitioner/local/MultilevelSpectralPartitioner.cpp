@@ -369,6 +369,12 @@ vector<int> MultilevelSpectralPartitioner::initialPartition(const CoarseGraph &c
         }
     }
     
+    // Ensure minimum of 2 partitions
+    if (k < 2) {
+        multilevel_logger.log("Enforcing minimum of 2 partitions (was " + std::to_string(k) + ")", "info");
+        k = 2;
+    }
+    
     // Run spectral partitioning
     vector<int> labels = spectral.partition(k);
     
@@ -404,6 +410,8 @@ void MultilevelSpectralPartitioner::refinePartitions(const CoarseGraph &graph, v
         partitionSizes[label]++;
     }
     
+    // Use configured vertex limit if available, otherwise calculate balanced size
+    int targetSize = (config.vertexLimitPerPartition > 0) ? config.vertexLimitPerPartition : (n / numPartitions);
     int avgSize = n / numPartitions;
     bool improved = true;
     int iterations = 0;
@@ -437,8 +445,8 @@ void MultilevelSpectralPartitioner::refinePartitions(const CoarseGraph &graph, v
                 
                 for (int p = 0; p < numPartitions; ++p) {
                     if (p != currentPart && externalCount[p] > maxExternal) {
-                        // Check balance constraint
-                        double imbalance = (double)(partitionSizes[p] + 1) / avgSize;
+                        // Check balance constraint using vertex limit
+                        double imbalance = (double)(partitionSizes[p] + 1) / targetSize;
                         if (imbalance <= config.balanceEpsilon) {
                             maxExternal = externalCount[p];
                             bestPart = p;
@@ -503,6 +511,13 @@ vector<int> MultilevelSpectralPartitioner::partition(int numPartitions) {
     
     // Phase 2: Initial partitioning on coarsest graph
     vector<int> labels = initialPartition(coarsest, numPartitions);
+    
+    // Calculate vertex limit per partition based on actual number of partitions
+    int actualK = *std::max_element(labels.begin(), labels.end()) + 1;
+    int totalVertices = graphHierarchy[0].numVertices;
+    config.vertexLimitPerPartition = totalVertices / actualK;
+    multilevel_logger.log("Vertex limit per partition: " + std::to_string(config.vertexLimitPerPartition) + 
+                         " (total vertices: " + std::to_string(totalVertices) + ", partitions: " + std::to_string(actualK) + ")", "info");
     
     // Phase 3: Uncoarsening with refinement
     multilevel_logger.log("Uncoarsening and refinement", "info");

@@ -39,6 +39,7 @@ struct MultilevelConfig {
     bool useBalancedClustering = true; // Use balanced k-means instead of standard
     bool skipEigengapForSmallGraphs = true;  // Skip eigengap for very small coarse graphs
     int eigengapSkipThreshold = 5000;  // Graph size below which to use fixed k instead of eigengap
+    int vertexLimitPerPartition = 0;   // Calculated as vertexCount / numPartitions (set during partitioning)
 };
 
 /**

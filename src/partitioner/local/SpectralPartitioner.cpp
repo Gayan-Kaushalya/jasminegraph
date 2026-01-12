@@ -373,7 +373,7 @@ int SpectralPartitioner::computeOptimalK(int maxK) {
 
     // Find largest eigengap
     double maxGap = 0.0;
-    int optimalK = 2;
+    int optimalK = 2;  // Minimum of 2 partitions
 
     for (int i = 1; i < eigenvalues.size(); ++i) {
         double gap = eigenvalues[i] - eigenvalues[i - 1];
@@ -381,6 +381,12 @@ int SpectralPartitioner::computeOptimalK(int maxK) {
             maxGap = gap;
             optimalK = i;
         }
+    }
+
+    // Ensure minimum of 2 partitions
+    if (optimalK < 2) {
+        spectral_logger.log("Enforcing minimum of 2 partitions (was " + std::to_string(optimalK) + ")", "info");
+        optimalK = 2;
     }
 
     spectral_logger.log("Optimal k=" + std::to_string(optimalK) + " with eigengap=" + std::to_string(maxGap), "info");
