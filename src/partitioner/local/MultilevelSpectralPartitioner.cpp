@@ -512,10 +512,10 @@ vector<int> MultilevelSpectralPartitioner::partition(int numPartitions) {
     // Phase 2: Initial partitioning on coarsest graph
     vector<int> labels = initialPartition(coarsest, numPartitions);
     
-    // Calculate vertex limit per partition based on actual number of partitions
+    // Calculate vertex limit per partition based on actual number of partitions (using ceiling division)
     int actualK = *std::max_element(labels.begin(), labels.end()) + 1;
     int totalVertices = graphHierarchy[0].numVertices;
-    config.vertexLimitPerPartition = totalVertices / actualK;
+    config.vertexLimitPerPartition = (totalVertices + actualK - 1) / actualK;  // Ceiling division
     multilevel_logger.log("Vertex limit per partition: " + std::to_string(config.vertexLimitPerPartition) + 
                          " (total vertices: " + std::to_string(totalVertices) + ", partitions: " + std::to_string(actualK) + ")", "info");
     
