@@ -36,6 +36,7 @@ limitations under the License.
 #include "../partitioner/local/MetisPartitioner.h"
 #include "../partitioner/local/RDFParser.h"
 #include "../partitioner/local/RDFPartitioner.h"
+#include "../partitioner/local/XtraPulpPartitioner.h"
 #include "../partitioner/stream/Partitioner.h"
 #include "../performance/metrics/PerformanceUtil.h"
 #include "../query/algorithms/linkprediction/JasminGraphLinkPredictor.h"
@@ -123,6 +124,7 @@ static void predict_command(std::string masterIP, int connFd, SQLiteDBInterface 
 static void start_remote_worker_command(int connFd, bool *loop_exit_p);
 static void sla_command(int connFd, SQLiteDBInterface *sqlite, PerformanceSQLiteDBInterface *perfSqlite,
                         bool *loop_exit_p);
+static void xtra_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p);
 std::map<int, std::shared_ptr<::KGConstructionRate>> JasmineGraphFrontEnd::kgConstructionRates = {};
 static vector<DataPublisher *> getWorkerClients(SQLiteDBInterface *sqlite) {
     const vector<Utils::worker> &workerList = Utils::getWorkerList(sqlite);
@@ -272,6 +274,8 @@ void *frontendservicesesion(void *dummyPt) {
             start_remote_worker_command(connFd, &loop_exit);
         } else if (line.compare(SLA) == 0) {
             sla_command(connFd, sqlite, perfSqlite, &loop_exit);
+        } else if (line.compare(XTRA) == 0) {
+            xtra_command(masterIP, connFd, sqlite, &loop_exit);
         } else {
             frontend_logger.error("Message format not recognized " + line);
             int result_wr = write(connFd, INVALID_FORMAT.c_str(), INVALID_FORMAT.size());
@@ -3444,3 +3448,150 @@ void JasmineGraphFrontEnd::stop_graph_streaming(int connFd, bool *loop_exit_p) {
         int resultWr = write(connFd, message2.c_str(), message2.length());
     }
 }
+
+static void xtra_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p) {
+    frontend_logger.info("XtraPuLP partitioning command received");
+    
+    int result_wr = write(connFd, SEND.c_str(), FRONTEND_COMMAND_LENGTH);
+    if (result_wr < 0) {
+        frontend_logger.error("Error writing to socket");
+        *loop_exit_p = true;
+        return;
+    }
+    result_wr = write(connFd, Conts::CARRIAGE_RETURN_NEW_LINE.c_str(), Conts::CARRIAGE_RETURN_NEW_LINE.size());
+    if (result_wr < 0) {
+        frontend_logger.error("Error writing to socket");
+        *loop_exit_p = true;
+        return;
+    }
+
+    // We get the name, path, and partition count as triplet separated by |
+    // Format: <name>|<path to edge list>|<partition count>|<vertex_balance>|<edge_balance>
+    char graph_data[FRONTEND_DATA_LENGTH + 1];
+    bzero(graph_data, FRONTEND_DATA_LENGTH + 1);
+    
+    read(connFd, graph_data, FRONTEND_DATA_LENGTH);
+    
+    std::time_t time = chrono::system_clock::to_time_t(chrono::system_clock::now());
+    string uploadStartTime = ctime(&time);
+    string gData(graph_data);
+    
+    gData = Utils::trim_copy(gData);
+    frontend_logger.info("Data received: " + gData);
+    
+    std::vector<std::string> strArr = Utils::split(gData, '|');
+    
+    if (strArr.size() < 3) {
+        frontend_logger.error("Message format not recognized. Expected: name|path|partitions[|vertex_balance|edge_balance]");
+        result_wr = write(connFd, INVALID_FORMAT.c_str(), INVALID_FORMAT.size());
+        if (result_wr < 0) {
+            frontend_logger.error("Error writing to socket");
+            *loop_exit_p = true;
+        }
+        return;
+    }
+    
+    string name = strArr[0];
+    string path = strArr[1];
+    int partitionCount = std::stoi(strArr[2]);
+    double vertexBalance = (strArr.size() > 3) ? std::stod(strArr[3]) : 1.10;
+    double edgeBalance = (strArr.size() > 4) ? std::stod(strArr[4]) : 0.0;
+    
+    frontend_logger.info("Graph name: " + name);
+    frontend_logger.info("Graph path: " + path);
+    frontend_logger.info("Partitions: " + std::to_string(partitionCount));
+    frontend_logger.info("Vertex balance: " + std::to_string(vertexBalance));
+    frontend_logger.info("Edge balance: " + std::to_string(edgeBalance));
+    
+    if (JasmineGraphFrontEndCommon::graphExists(path, sqlite)) {
+        frontend_logger.error("Graph already exists");
+        result_wr = write(connFd, INVALID_FORMAT.c_str(), INVALID_FORMAT.size());
+        if (result_wr < 0) {
+            frontend_logger.error("Error writing to socket");
+            *loop_exit_p = true;
+        }
+        return;
+    }
+    
+    if (!Utils::fileExists(path)) {
+        frontend_logger.error("Graph data file does not exist on the specified path");
+        string errorMsg = "File not found: " + path + "\r\n";
+        result_wr = write(connFd, errorMsg.c_str(), errorMsg.size());
+        if (result_wr < 0) {
+            frontend_logger.error("Error writing to socket");
+            *loop_exit_p = true;
+        }
+        return;
+    }
+    
+    frontend_logger.info("Path exists, starting XtraPuLP partitioning");
+    
+    // Insert graph into database
+    string sqlStatement =
+        "INSERT INTO graph (name,upload_path,upload_start_time,upload_end_time,graph_status_idgraph_status,"
+        "vertexcount,centralpartitioncount,edgecount) VALUES(\"" +
+        name + "\", \"" + path + "\", \"" + uploadStartTime + "\", \"\",\"" +
+        to_string(Conts::GRAPH_STATUS::LOADING) + "\", \"\", \"\", \"\")";
+    int newGraphID = sqlite->runInsert(sqlStatement);
+    
+    frontend_logger.info("Graph inserted with ID: " + std::to_string(newGraphID));
+    
+    try {
+        // Create XtraPuLP partitioner instance
+        XtraPulpPartitioner xtraPartitioner(sqlite);
+        
+        if (!xtraPartitioner.isAvailable()) {
+            frontend_logger.error("XtraPuLP partitioner is not available");
+            string errorMsg = "XtraPuLP not available\r\n";
+            result_wr = write(connFd, errorMsg.c_str(), errorMsg.size());
+            return;
+        }
+        
+        // Partition with XtraPuLP
+        vector<std::map<int, string>> fullFileList = xtraPartitioner.partitionWithXtraPulp(
+            newGraphID, path, partitionCount, vertexBalance, edgeBalance);
+        
+        if (fullFileList.empty()) {
+            frontend_logger.error("XtraPuLP partitioning failed");
+            string errorMsg = "Partitioning failed. Check logs for details.\r\n";
+            result_wr = write(connFd, errorMsg.c_str(), errorMsg.size());
+            return;
+        }
+        
+        frontend_logger.info("XtraPuLP partitioning completed successfully");
+        
+        // Upload graph to workers
+        JasmineGraphServer *server = JasmineGraphServer::getInstance();
+        server->uploadGraphLocally(newGraphID, Conts::GRAPH_TYPE_NORMAL, fullFileList, masterIP);
+        
+        // Clean up temporary files
+        Utils::deleteDirectory(Utils::getHomeDir() + "/.jasminegraph/tmp/" + to_string(newGraphID));
+        
+        // Update upload time
+        JasmineGraphFrontEndCommon::getAndUpdateUploadTime(to_string(newGraphID), sqlite);
+        
+        frontend_logger.info("Graph upload completed using XtraPuLP partitioning");
+        
+        result_wr = write(connFd, DONE.c_str(), DONE.size());
+        if (result_wr < 0) {
+            frontend_logger.error("Error writing to socket");
+            *loop_exit_p = true;
+            return;
+        }
+        result_wr = write(connFd, Conts::CARRIAGE_RETURN_NEW_LINE.c_str(), Conts::CARRIAGE_RETURN_NEW_LINE.size());
+        if (result_wr < 0) {
+            frontend_logger.error("Error writing to socket");
+            *loop_exit_p = true;
+        }
+        
+    } catch (const std::exception& e) {
+        frontend_logger.error("Exception during XtraPuLP partitioning: " + string(e.what()));
+        string errorMsg = "Error: " + string(e.what()) + "\r\n";
+        result_wr = write(connFd, errorMsg.c_str(), errorMsg.size());
+        if (result_wr < 0) {
+            frontend_logger.error("Error writing to socket");
+            *loop_exit_p = true;
+        }
+    }
+}
+
