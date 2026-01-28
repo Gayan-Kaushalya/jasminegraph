@@ -53,6 +53,8 @@ class XtraPulpPartitioner {
     
  private:
     SQLiteDBInterface *sqlite;
+    int mpiProcesses;  // Number of MPI processes to use
+    std::string xtraPulpPath;  // Path to XtraPuLP executable
     
     /**
      * Convert graph file to format suitable for XtraPuLP if needed

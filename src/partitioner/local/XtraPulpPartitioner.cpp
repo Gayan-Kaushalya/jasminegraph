@@ -24,6 +24,19 @@ extern Logger partitioner_logger;
 
 XtraPulpPartitioner::XtraPulpPartitioner(SQLiteDBInterface *db) {
     this->sqlite = db;
+    
+    // Load MPI configuration from properties
+    std::map<std::string, std::string> conf = Utils::getBatchUploadFileConfiguration();
+    
+    // Get number of MPI processes (default: 4)
+    std::string mpiProcsStr = conf["org.jasminegraph.xtrapulp.mpi.processes"];
+    this->mpiProcesses = mpiProcsStr.empty() ? 4 : std::stoi(mpiProcsStr);
+    
+    // Get XtraPuLP executable path
+    std::string exePath = conf["org.jasminegraph.xtrapulp.executable"];
+    this->xtraPulpPath = exePath.empty() ? "/../xtrapulp/0.3/xtrapulp" : exePath;
+    
+    partitioner_logger.info("XtraPulpPartitioner initialized with " + std::to_string(this->mpiProcesses) + " MPI processes");
 }
 
 bool XtraPulpPartitioner::isAvailable() {
@@ -150,13 +163,16 @@ std::vector<std::map<int, std::string>> XtraPulpPartitioner::partitionWithXtraPu
         return emptyResult;
     }
     
-    // Prepare XtraPuLP command
-    // Note: This assumes XtraPuLP is compiled and in the path or we know its location
-    std::string xtraPulpExe = Utils::getHomeDir() + "/../xtrapulp/0.3/xtrapulp";
+    // Prepare XtraPuLP command with MPI
+    std::string xtraPulpExe = Utils::getHomeDir() + this->xtraPulpPath;
     std::string outputFile = tmpDir + "/graph.part." + std::to_string(numPartitions);
     
     std::stringstream cmdStream;
     cmdStream << "cd " << tmpDir << " && ";
+    
+    // Automatically wrap with mpirun
+    cmdStream << "mpirun --allow-run-as-root -n " << this->mpiProcesses << " ";
+    
     cmdStream << xtraPulpExe << " ";
     cmdStream << xtraInputFile << " ";
     cmdStream << numPartitions << " ";
@@ -167,13 +183,14 @@ std::vector<std::map<int, std::string>> XtraPulpPartitioner::partitionWithXtraPu
     cmdStream << "-o " << outputFile;
     
     std::string command = cmdStream.str();
-    partitioner_logger.info("Executing XtraPuLP: " + command);
+    partitioner_logger.info("Executing XtraPuLP with " + std::to_string(this->mpiProcesses) + " MPI processes: " + command);
     
     int result = system(command.c_str());
     
     if (result != 0) {
         partitioner_logger.error("XtraPuLP execution failed with code: " + std::to_string(result));
-        partitioner_logger.info("Note: XtraPuLP requires MPI. Use: mpirun -n <procs> " + xtraPulpExe);
+        partitioner_logger.error("Command was: " + command);
+        partitioner_logger.info("Check if MPI and XtraPuLP are properly installed");
         return emptyResult;
     }
     
