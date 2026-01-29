@@ -420,5 +420,6 @@ add_custom_target(xtrapulp ALL
     VERBATIM
 )
 
-# Ensure XtraPuLP is built before JasmineGraph
+# Ensure XtraPuLP is built before JasmineGraphLib and JasmineGraph
+add_dependencies(JasmineGraphLib xtrapulp)
 add_dependencies(JasmineGraph xtrapulp)
