@@ -323,6 +323,17 @@ find_package(OpenMP REQUIRED)
 if(OpenMP_CXX_FOUND)
     target_link_libraries(JasmineGraph  PRIVATE OpenMP::OpenMP_CXX faiss)
 endif()
+
+# Find and link MPI for XtraPuLP support
+find_package(MPI REQUIRED)
+if(MPI_CXX_FOUND)
+    target_link_libraries(JasmineGraphLib PRIVATE MPI::MPI_CXX)
+    target_link_libraries(JasmineGraph PRIVATE MPI::MPI_CXX)
+endif()
+
+# Link XtraPuLP library
+target_link_libraries(JasmineGraphLib PRIVATE ${CMAKE_SOURCE_DIR}/src/partitioner/xtrapulp/libxtrapulp.a)
+
 include_directories(/usr/local/libhdfs3/include/hdfs/)
 include_directories(/usr/include/oneapi/)
 include_directories(/usr/local/parmetis/include/)
