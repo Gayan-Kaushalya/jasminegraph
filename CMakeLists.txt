@@ -412,11 +412,12 @@ if (CMAKE_BUILD_TYPE STREQUAL "DEBUG")
 endif ()
 
 # Build XtraPuLP partitioner
-add_custom_target(xtrapulp
-    COMMAND $(MAKE) -C ${CMAKE_SOURCE_DIR}/src/partitioner/xtrapulp
+add_custom_target(xtrapulp ALL
+    COMMAND ${CMAKE_COMMAND} -E echo "Building XtraPuLP MPI partitioner..."
+    COMMAND make -C ${CMAKE_SOURCE_DIR}/src/partitioner/xtrapulp
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/src/partitioner/xtrapulp
     COMMENT "Building XtraPuLP MPI partitioner"
 )
 
-# Make XtraPuLP build before the main JasmineGraph executable
+# Ensure XtraPuLP is built before JasmineGraph
 add_dependencies(JasmineGraph xtrapulp)
