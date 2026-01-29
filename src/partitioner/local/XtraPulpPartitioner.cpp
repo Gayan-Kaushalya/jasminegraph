@@ -31,7 +31,7 @@ XtraPulpPartitioner::XtraPulpPartitioner(SQLiteDBInterface *db) {
     
     // Get XtraPuLP executable path
     std::string exePath = Utils::getJasmineGraphProperty("org.jasminegraph.xtrapulp.executable");
-    this->xtraPulpPath = exePath.empty() ? "/../xtrapulp/0.3/xtrapulp" : exePath;
+    this->xtraPulpPath = exePath.empty() ? "/../jasminegraph/src/partitioner/xtrapulp/xtrapulp" : exePath;
     
     partitioner_logger.info("XtraPulpPartitioner initialized with " + std::to_string(this->mpiProcesses) + " MPI processes");
 }
