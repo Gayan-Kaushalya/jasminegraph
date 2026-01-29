@@ -425,10 +425,10 @@ endif ()
 # Build XtraPuLP partitioner
 add_custom_target(xtrapulp ALL
     COMMAND ${CMAKE_COMMAND} -E echo "Building XtraPuLP MPI partitioner..."
-    COMMAND $(MAKE) -f Makefile all
+    COMMAND ${CMAKE_MAKE_PROGRAM} all
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/src/partitioner/xtrapulp
     COMMENT "Building XtraPuLP MPI partitioner"
-    VERBATIM
+    USES_TERMINAL
 )
 
 # Create imported library for XtraPuLP
