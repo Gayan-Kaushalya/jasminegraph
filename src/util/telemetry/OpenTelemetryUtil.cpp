@@ -170,9 +170,7 @@ void OpenTelemetryUtil::initialize(const std::string& service_name,
         }
 
         // Create tracer provider with the processor and resource
-        trace_sdk::TracerContext context;
-        context.AddProcessor(std::move(processor));
-        auto provider = trace_sdk::TracerProviderFactory::Create(std::move(context), resource);
+        auto provider = trace_sdk::TracerProviderFactory::Create(std::move(processor), resource);
         tracer_provider_ = nostd::shared_ptr<trace_api::TracerProvider>(provider.release());
 
         // Set the global trace provider
@@ -192,9 +190,7 @@ void OpenTelemetryUtil::initialize(const std::string& service_name,
         // Fallback - create console exporter
         auto console_exporter = trace_exporter::OStreamSpanExporterFactory::Create();
         auto console_processor = trace_sdk::SimpleSpanProcessorFactory::Create(std::move(console_exporter));
-        trace_sdk::TracerContext fallback_context;
-        fallback_context.AddProcessor(std::move(console_processor));
-        auto fallback_provider = trace_sdk::TracerProviderFactory::Create(std::move(fallback_context),
+        auto fallback_provider = trace_sdk::TracerProviderFactory::Create(std::move(console_processor),
                                                                             fallback_resource);
         tracer_provider_ = nostd::shared_ptr<trace_api::TracerProvider>(fallback_provider.release());
         trace_api::Provider::SetTracerProvider(tracer_provider_);
