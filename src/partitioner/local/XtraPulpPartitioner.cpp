@@ -26,14 +26,11 @@ XtraPulpPartitioner::XtraPulpPartitioner(SQLiteDBInterface *db) {
     this->sqlite = db;
     
     // Load MPI configuration from properties
-    std::map<std::string, std::string> conf = Utils::getBatchUploadFileConfiguration();
-    
-    // Get number of MPI processes (default: 4)
-    std::string mpiProcsStr = conf["org.jasminegraph.xtrapulp.mpi.processes"];
+    std::string mpiProcsStr = Utils::getJasmineGraphProperty("org.jasminegraph.xtrapulp.mpi.processes");
     this->mpiProcesses = mpiProcsStr.empty() ? 4 : std::stoi(mpiProcsStr);
     
     // Get XtraPuLP executable path
-    std::string exePath = conf["org.jasminegraph.xtrapulp.executable"];
+    std::string exePath = Utils::getJasmineGraphProperty("org.jasminegraph.xtrapulp.executable");
     this->xtraPulpPath = exePath.empty() ? "/../xtrapulp/0.3/xtrapulp" : exePath;
     
     partitioner_logger.info("XtraPulpPartitioner initialized with " + std::to_string(this->mpiProcesses) + " MPI processes");
