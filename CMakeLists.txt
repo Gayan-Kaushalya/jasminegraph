@@ -332,7 +332,7 @@ if(MPI_CXX_FOUND)
 endif()
 
 # Link XtraPuLP library
-target_link_libraries(JasmineGraphLib PRIVATE ${CMAKE_SOURCE_DIR}/src/partitioner/xtrapulp/libxtrapulp.a)
+target_link_libraries(JasmineGraphLib PRIVATE xtrapulp_lib)
 
 include_directories(/usr/local/libhdfs3/include/hdfs/)
 include_directories(/usr/include/oneapi/)
@@ -431,6 +431,13 @@ add_custom_target(xtrapulp ALL
     VERBATIM
 )
 
-# Ensure XtraPuLP is built before JasmineGraphLib and JasmineGraph
-add_dependencies(JasmineGraphLib xtrapulp)
+# Create imported library for XtraPuLP
+add_library(xtrapulp_lib STATIC IMPORTED)
+set_target_properties(xtrapulp_lib PROPERTIES
+    IMPORTED_LOCATION ${CMAKE_SOURCE_DIR}/src/partitioner/xtrapulp/libxtrapulp.a
+)
+
+# Ensure XtraPuLP is built before the imported library is used
+add_dependencies(xtrapulp_lib xtrapulp)
+add_dependencies(JasmineGraphLib xtrapulp_lib)
 add_dependencies(JasmineGraph xtrapulp)
