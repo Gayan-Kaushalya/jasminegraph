@@ -23,19 +23,19 @@ limitations under the License.
 #include <filesystem>
 #include <algorithm>
 
-// Include FSM framework headers
-#include "../../../../fsm/src/partitioner.hpp"
-#include "../../../../fsm/src/hep_partitioner.hpp"
-#include "../../../../fsm/src/ne_partitioner.hpp"
-#include "../../../../fsm/src/hdrf_partitioner.hpp"
-#include "../../../../fsm/src/hybrid_partitioner.hpp"
-#include "../../../../fsm/src/ebv_partitioner.hpp"
-#include "../../../../fsm/src/dbh_partitioner.hpp"
-#include "../../../../fsm/src/rand_partitioner.hpp"
-#include "../../../../fsm/src/fennel_partitioner.hpp"
-#include "../../../../fsm/src/bpart_partitioner.hpp"
-#include "../../../../fsm/src/hybridbl_partitioner.hpp"
-#include "../../../../fsm/src/fsm_partitioner.hpp"
+// Include FSM framework headers (local to JasmineGraph)
+#include "../fsm/partitioner.hpp"
+#include "../fsm/hep_partitioner.hpp"
+#include "../fsm/ne_partitioner.hpp"
+#include "../fsm/hdrf_partitioner.hpp"
+#include "../fsm/hybrid_partitioner.hpp"
+#include "../fsm/ebv_partitioner.hpp"
+#include "../fsm/dbh_partitioner.hpp"
+#include "../fsm/rand_partitioner.hpp"
+#include "../fsm/fennel_partitioner.hpp"
+#include "../fsm/bpart_partitioner.hpp"
+#include "../fsm/hybridbl_partitioner.hpp"
+#include "../fsm/fsm_partitioner.hpp"
 
 // Declare gflags from FSM
 DECLARE_int32(p);

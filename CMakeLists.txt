@@ -225,28 +225,28 @@ set(SOURCES src/backend/JasmineGraphBackend.cpp
 
 )
 
-# FSM Framework Integration - Add FSM sources
+# FSM Framework Integration - Add FSM sources (now local to JasmineGraph)
 set(FSM_SOURCES
-        ../fsm/src/graph.cpp
-        ../fsm/src/ne_graph.cpp
-        ../fsm/src/hep_graph.cpp
-        ../fsm/src/fsm_partitioner.cpp
-        ../fsm/src/ne_partitioner.cpp
-        ../fsm/src/hep_partitioner.cpp
-        ../fsm/src/ebv_partitioner.cpp
-        ../fsm/src/dbh_partitioner.cpp
-        ../fsm/src/hdrf_partitioner.cpp
-        ../fsm/src/rand_partitioner.cpp
-        ../fsm/src/fennel_partitioner.cpp
-        ../fsm/src/bpart_partitioner.cpp
-        ../fsm/src/hybridbl_partitioner.cpp
-        ../fsm/src/hybrid_partitioner.cpp
-        ../fsm/src/vertex2edgepart.cpp
-        ../fsm/src/conversions.cpp
+        src/partitioner/fsm/graph.cpp
+        src/partitioner/fsm/ne_graph.cpp
+        src/partitioner/fsm/hep_graph.cpp
+        src/partitioner/fsm/fsm_partitioner.cpp
+        src/partitioner/fsm/ne_partitioner.cpp
+        src/partitioner/fsm/hep_partitioner.cpp
+        src/partitioner/fsm/ebv_partitioner.cpp
+        src/partitioner/fsm/dbh_partitioner.cpp
+        src/partitioner/fsm/hdrf_partitioner.cpp
+        src/partitioner/fsm/rand_partitioner.cpp
+        src/partitioner/fsm/fennel_partitioner.cpp
+        src/partitioner/fsm/bpart_partitioner.cpp
+        src/partitioner/fsm/hybridbl_partitioner.cpp
+        src/partitioner/fsm/hybrid_partitioner.cpp
+        src/partitioner/fsm/vertex2edgepart.cpp
+        src/partitioner/fsm/conversions.cpp
 )
 
 # Add FSM include directory
-include_directories(../fsm/src)
+include_directories(src/partitioner/fsm)
 
 # Add FSM sources to the library
 list(APPEND SOURCES ${FSM_SOURCES})
