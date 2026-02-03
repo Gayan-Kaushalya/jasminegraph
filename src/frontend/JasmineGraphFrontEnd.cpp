@@ -3505,6 +3505,13 @@ void JasmineGraphFrontEnd::stop_graph_streaming(int connFd, bool *loop_exit_p) {
 }
 
 static void fsm_partition_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p) {
+#ifndef FSM_ENABLED
+    frontend_logger.error("FSM partitioning is not available - glog/gflags not found during build");
+    string errorMsg = "FSM support disabled. Install libgoogle-glog-dev and libgflags-dev and rebuild.";
+    Utils::send_str_wrapper(connFd, errorMsg);
+    *loop_exit_p = true;
+    return;
+#else
     frontend_logger.info("FSM partition command received");
     
     if (!Utils::send_str_wrapper(connFd, SEND)) {
@@ -3729,4 +3736,5 @@ static void fsm_partition_command(std::string masterIP, int connFd, SQLiteDBInte
         }
         frontend_logger.error(errorMsg);
     }
+#endif // FSM_ENABLED
 }

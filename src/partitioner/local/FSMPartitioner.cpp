@@ -12,6 +12,9 @@ limitations under the License.
  */
 
 #include "FSMPartitioner.h"
+
+#ifdef FSM_ENABLED
+
 #include "../../util/Utils.h"
 #include "../../util/logger/Logger.h"
 #include <sstream>
@@ -227,3 +230,61 @@ bool FSMPartitioner::executeFSM(const std::vector<string>& args, const string& o
     // For now, we use direct library integration
     return true;
 }
+
+#else // FSM_ENABLED not defined
+
+// Stub implementations when FSM is disabled
+#include "../../util/logger/Logger.h"
+static Logger fsm_logger;
+
+FSMPartitioner::FSMPartitioner(SQLiteDBInterface *sqlite) : sqlite(sqlite), lastGraphID(-1) {
+    fsm_logger.warn("FSM partitioning is disabled - glog/gflags libraries not found");
+}
+
+std::vector<string> FSMPartitioner::getSupportedMethods() {
+    return {};
+}
+
+bool FSMPartitioner::isValidMethod(const string& method) {
+    return false;
+}
+
+std::map<int, std::string> FSMPartitioner::partition(
+    const string& inputFilePath,
+    int graphID,
+    int partitionCount,
+    const string& method) {
+    fsm_logger.error("FSM partitioning is disabled - rebuild with glog and gflags installed");
+    return {};
+}
+
+std::map<int, std::string> FSMPartitioner::partitionWithParams(
+    const string& inputFilePath,
+    int graphID,
+    int partitionCount,
+    const string& method,
+    double lambda,
+    double hdf) {
+    fsm_logger.error("FSM partitioning is disabled - install libgoogle-glog-dev and libgflags-dev");
+    return {};
+}
+
+std::map<int, std::string> FSMPartitioner::createPartitionFileMap(
+    const string& outputDir,
+    int graphID,
+    int partitionCount) {
+    return {};
+}
+
+std::map<string, string> FSMPartitioner::getPartitionStats() {
+    return lastStats;
+}
+
+void FSMPartitioner::parseStats(const string& fsmOutput) {
+}
+
+bool FSMPartitioner::executeFSM(const std::vector<string>& args, const string& outputDir) {
+    return false;
+}
+
+#endif // FSM_ENABLED
