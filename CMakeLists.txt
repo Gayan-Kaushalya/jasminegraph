@@ -366,24 +366,10 @@ target_link_libraries(JasmineGraphLib PRIVATE yaml-cpp)
 target_link_libraries(JasmineGraphLib PRIVATE curl)
 target_link_libraries(JasmineGraphLib PRIVATE antlr4-runtime)
 
-# FSM dependencies - try to find and link glog and gflags
-# If not available, FSM support will be disabled
-find_library(GLOG_LIB NAMES glog libglog)
-find_library(GFLAGS_LIB NAMES gflags libgflags)
-
-if(GLOG_LIB AND GFLAGS_LIB)
-    message(STATUS "Found glog: ${GLOG_LIB}")
-    message(STATUS "Found gflags: ${GFLAGS_LIB}")
-    message(STATUS "FSM partitioning support enabled")
-    target_link_libraries(JasmineGraphLib PRIVATE ${GLOG_LIB} ${GFLAGS_LIB})
-    target_compile_definitions(JasmineGraphLib PRIVATE FSM_ENABLED)
-else()
-    message(WARNING "glog or gflags not found - FSM support disabled")
-    message(WARNING "To enable FSM: sudo apt-get install libgoogle-glog-dev libgflags-dev")
-    # Remove FSM sources from build
-    list(FILTER SOURCES EXCLUDE REGEX ".*/fsm/.*")
-    list(FILTER SOURCES EXCLUDE REGEX ".*FSMPartitioner.*")
-endif()
+# FSM support is now always enabled (no external dependencies)
+# FSM uses JasmineGraph's logger and simple global struct instead of glog/gflags
+message(STATUS "FSM partitioning support enabled (no external dependencies)")
+target_compile_definitions(JasmineGraphLib PRIVATE FSM_ENABLED)
 
 # Option to enable/disable OpenTelemetry
 option(ENABLE_OPENTELEMETRY "Enable OpenTelemetry support" ON)
