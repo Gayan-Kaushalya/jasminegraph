@@ -53,15 +53,35 @@ inline FSMFlags FLAGS;
 // Create static logger for FSM framework
 static Logger fsm_framework_logger;
 
-// Replace glog LOG macros with JasmineGraph logger
-#define LOG(level) FSMLogStream(#level).stream()
-#define CHECK(condition) if(!(condition)) fsm_framework_logger.error(std::string("CHECK failed: ") + #condition), std::cerr
-#define CHECK_LT(a, b) if(!((a) < (b))) { std::ostringstream oss; oss << "CHECK_LT failed: " << #a << " < " << #b << " (" << (a) << " < " << (b) << ")"; fsm_framework_logger.error(oss.str()); } static_cast<void>(0)
-#define CHECK_LE(a, b) if(!((a) <= (b))) { std::ostringstream oss; oss << "CHECK_LE failed: " << #a << " <= " << #b << " (" << (a) << " <= " << (b) << ")"; fsm_framework_logger.error(oss.str()); } static_cast<void>(0)
-#define CHECK_GT(a, b) if(!((a) > (b))) { std::ostringstream oss; oss << "CHECK_GT failed: " << #a << " > " << #b << " (" << (a) << " > " << (b) << ")"; fsm_framework_logger.error(oss.str()); } static_cast<void>(0)
-#define CHECK_GE(a, b) if(!((a) >= (b))) { std::ostringstream oss; oss << "CHECK_GE failed: " << #a << " >= " << #b << " (" << (a) << " >= " << (b) << ")"; fsm_framework_logger.error(oss.str()); } static_cast<void>(0)
-#define CHECK_EQ(a, b) if(!((a) == (b))) { std::ostringstream oss; oss << "CHECK_EQ failed: " << #a << " == " << #b << " (" << (a) << " == " << (b) << ")"; fsm_framework_logger.error(oss.str()); } static_cast<void>(0)
-#define CHECK_NE(a, b) if(!((a) != (b))) { std::ostringstream oss; oss << "CHECK_NE failed: " << #a << " != " << #b << " (" << (a) << " != " << (b) << ")"; fsm_framework_logger.error(oss.str()); } static_cast<void>(0)
+// Helper class to support CHECK(condition) << "message" syntax
+class FSMCheckStream {
+    std::ostringstream oss;
+    bool failed;
+public:
+    FSMCheckStream(bool condition_failed, const std::string& msg) : failed(condition_failed) {
+        if (failed) {
+            oss << msg;
+        }
+    }
+    ~FSMCheckStream() {
+        if (failed && oss.str().length() > 0) {
+            fsm_framework_logger.error(oss.str());
+        }
+    }
+    template<typename T>
+    FSMCheckStream& operator<<(const T& val) {
+        if (failed) {
+            oss << val;
+        }
+        return *this;
+    }
+    FSMCheckStream& operator<<(std::ostream& (*manip)(std::ostream&)) {
+        if (failed) {
+            oss << manip;
+        }
+        return *this;
+    }
+};
 
 // Helper class to support LOG(level) << "message" syntax
 class FSMLogStream {
@@ -82,6 +102,16 @@ public:
     }
     std::ostream& stream() { return oss; }
 };
+
+// Replace glog LOG and CHECK macros with JasmineGraph logger
+#define LOG(level) FSMLogStream(#level).stream()
+#define CHECK(condition) FSMCheckStream(!(condition), std::string("CHECK failed: ") + #condition)
+#define CHECK_LT(a, b) FSMCheckStream(!((a) < (b)), std::string("CHECK_LT failed: ") + #a + " < " + #b)
+#define CHECK_LE(a, b) FSMCheckStream(!((a) <= (b)), std::string("CHECK_LE failed: ") + #a + " <= " + #b)
+#define CHECK_GT(a, b) FSMCheckStream(!((a) > (b)), std::string("CHECK_GT failed: ") + #a + " > " + #b)
+#define CHECK_GE(a, b) FSMCheckStream(!((a) >= (b)), std::string("CHECK_GE failed: ") + #a + " >= " + #b)
+#define CHECK_EQ(a, b) FSMCheckStream(!((a) == (b)), std::string("CHECK_EQ failed: ") + #a + " == " + #b)
+#define CHECK_NE(a, b) FSMCheckStream(!((a) != (b)), std::string("CHECK_NE failed: ") + #a + " != " + #b)
 
 using vid_t = uint32_t;
 using eid_t = uint64_t;
