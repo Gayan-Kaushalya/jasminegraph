@@ -34,6 +34,7 @@ limitations under the License.
 #include "../nativestore/RelationBlock.h"
 #include "../partitioner/local/JSONParser.h"
 #include "../partitioner/local/MetisPartitioner.h"
+#include "../partitioner/local/FSMPartitioner.h"
 #include "../partitioner/local/RDFParser.h"
 #include "../partitioner/local/RDFPartitioner.h"
 #include "../partitioner/stream/Partitioner.h"
@@ -124,6 +125,7 @@ static void predict_command(std::string masterIP, int connFd, SQLiteDBInterface 
 static void start_remote_worker_command(int connFd, bool *loop_exit_p);
 static void sla_command(int connFd, SQLiteDBInterface *sqlite, PerformanceSQLiteDBInterface *perfSqlite,
                         bool *loop_exit_p);
+static void fsm_partition_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p);
 std::map<int, std::shared_ptr<::KGConstructionRate>> JasmineGraphFrontEnd::kgConstructionRates = {};
 static vector<DataPublisher *> getWorkerClients(SQLiteDBInterface *sqlite) {
     const vector<Utils::worker> &workerList = Utils::getWorkerList(sqlite);
@@ -275,6 +277,8 @@ void *frontendservicesesion(void *dummyPt) {
             start_remote_worker_command(connFd, &loop_exit);
         } else if (line.compare(SLA) == 0) {
             sla_command(connFd, sqlite, perfSqlite, &loop_exit);
+        } else if (line.compare(FSM_PARTITION) == 0) {
+            fsm_partition_command(masterIP, connFd, sqlite, &loop_exit);
         } else {
             frontend_logger.error("Message format not recognized " + line);
             int result_wr = write(connFd, INVALID_FORMAT.c_str(), INVALID_FORMAT.size());
@@ -3497,5 +3501,232 @@ void JasmineGraphFrontEnd::stop_graph_streaming(int connFd, bool *loop_exit_p) {
     } else {
         std::string message2 = "Graph Id not Found";
         int resultWr = write(connFd, message2.c_str(), message2.length());
+    }
+}
+
+static void fsm_partition_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p) {
+    frontend_logger.info("FSM partition command received");
+    
+    if (!Utils::send_str_wrapper(connFd, SEND)) {
+        *loop_exit_p = true;
+        return;
+    }
+    frontend_logger.info("Sent: " + SEND);
+
+    // Receive graph ID or file path
+    char data[DATA_BUFFER_SIZE];
+    string graphIDOrPath = Utils::read_str_trim_wrapper(connFd, data, FRONTEND_DATA_LENGTH);
+    frontend_logger.info("Received Graph ID or Path: " + graphIDOrPath);
+
+    // Determine if this is an existing graph ID or a new file path
+    bool isExistingGraph = false;
+    bool isFilePath = false;
+    string graphID;
+    string graphFilePath;
+    string graphName;
+    
+    // Check if it's a valid graph ID (numeric and exists in DB)
+    try {
+        int potentialID = std::stoi(graphIDOrPath);
+        string sqlStatement = "SELECT idgraph, upload_path, name FROM graph WHERE idgraph='" + graphIDOrPath + "'";
+        std::vector<vector<pair<string, string>>> output = sqlite->runSelect(sqlStatement);
+        
+        if (!output.empty() && output[0].size() >= 2) {
+            // Existing graph found
+            isExistingGraph = true;
+            graphID = graphIDOrPath;
+            graphFilePath = output[0][1].second;
+            if (output[0].size() >= 3) {
+                graphName = output[0][2].second;
+            }
+            frontend_logger.info("Using existing graph: " + graphID + " (" + graphName + ")");
+        }
+    } catch (...) {
+        // Not a number, treat as file path
+    }
+    
+    // If not existing graph, treat as file path
+    if (!isExistingGraph) {
+        graphFilePath = graphIDOrPath;
+        
+        // Check if file exists
+        if (!Utils::fileExists(graphFilePath)) {
+            string message = "File does not exist: " + graphFilePath;
+            if (!Utils::send_str_wrapper(connFd, message)) {
+                *loop_exit_p = true;
+                return;
+            }
+            frontend_logger.error(message);
+            return;
+        }
+        
+        isFilePath = true;
+        frontend_logger.info("Using new file for partitioning: " + graphFilePath);
+    }
+
+    if (!Utils::send_str_wrapper(connFd, SEND)) {
+        *loop_exit_p = true;
+        return;
+    }
+    frontend_logger.info("Sent: " + SEND);
+
+    // Receive partition count
+    string partitionCount = Utils::read_str_trim_wrapper(connFd, data, FRONTEND_DATA_LENGTH);
+    frontend_logger.info("Received partition count: " + partitionCount);
+    
+    int nPartitions = std::stoi(partitionCount);
+    if (nPartitions <= 0) {
+        string message = "Invalid partition count";
+        if (!Utils::send_str_wrapper(connFd, message)) {
+            *loop_exit_p = true;
+            return;
+        }
+        return;
+    }
+
+    if (!Utils::send_str_wrapper(connFd, SEND)) {
+        *loop_exit_p = true;
+        return;
+    }
+    frontend_logger.info("Sent: " + SEND);
+
+    // Receive FSM method
+    string fsmMethod = Utils::read_str_trim_wrapper(connFd, data, FRONTEND_DATA_LENGTH);
+    frontend_logger.info("Received FSM method: " + fsmMethod);
+
+    // Validate FSM method
+    if (!FSMPartitioner::isValidMethod(fsmMethod)) {
+        string message = "Invalid FSM method: " + fsmMethod + ". Valid methods: hep, ne, hdrf, hybrid, ebv, dbh, rand, fennel, bpart, hybridbl, fsm_ne, fsm_hep";
+        if (!Utils::send_str_wrapper(connFd, message)) {
+            *loop_exit_p = true;
+            return;
+        }
+        frontend_logger.error(message);
+        return;
+    }
+
+    if (!Utils::send_str_wrapper(connFd, SEND)) {
+        *loop_exit_p = true;
+        return;
+    }
+    frontend_logger.info("Sent: " + SEND);
+
+    // Receive lambda parameter (optional)
+    string lambdaStr = Utils::read_str_trim_wrapper(connFd, data, FRONTEND_DATA_LENGTH);
+    double lambda = 1.1;
+    if (!lambdaStr.empty() && lambdaStr != "default") {
+        try {
+            lambda = std::stod(lambdaStr);
+        } catch (...) {
+            lambda = 1.1;
+        }
+    }
+    frontend_logger.info("Using lambda: " + std::to_string(lambda));
+
+    // Execute FSM partitioning
+    try {
+        FSMPartitioner fsmPartitioner(sqlite);
+        
+        // If this is a new file (not existing graph), create a graph entry
+        int graphIDInt = -1;
+        if (isFilePath) {
+            // Generate new graph ID
+            string sqlStatement = "SELECT MAX(idgraph) FROM graph";
+            std::vector<vector<pair<string, string>>> output = sqlite->runSelect(sqlStatement);
+            
+            if (!output.empty() && !output[0].empty() && !output[0][0].second.empty()) {
+                graphIDInt = std::stoi(output[0][0].second) + 1;
+            } else {
+                graphIDInt = 1;
+            }
+            graphID = std::to_string(graphIDInt);
+            
+            // Extract graph name from file path
+            size_t lastSlash = graphFilePath.find_last_of("/\\");
+            graphName = (lastSlash != string::npos) ? graphFilePath.substr(lastSlash + 1) : graphFilePath;
+            
+            // Remove file extension if present
+            size_t lastDot = graphName.find_last_of(".");
+            if (lastDot != string::npos) {
+                graphName = graphName.substr(0, lastDot);
+            }
+            
+            // Insert graph entry into database
+            sqlStatement = "INSERT INTO graph (idgraph, name, upload_path, upload_end_time, graph_status_idgraph_status) "
+                          "VALUES ('" + graphID + "', '" + graphName + "_fsm', '" + graphFilePath + "', "
+                          "datetime('now'), '1')";
+            sqlite->runInsert(sqlStatement);
+            
+            string msg = "Created new graph entry: ID=" + graphID + ", Name=" + graphName + "_fsm";
+            if (!Utils::send_str_wrapper(connFd, msg)) {
+                *loop_exit_p = true;
+                return;
+            }
+            frontend_logger.info(msg);
+        } else {
+            graphIDInt = std::stoi(graphID);
+        }
+        
+        string statusMsg = "Starting FSM partitioning with method: " + fsmMethod;
+        if (!Utils::send_str_wrapper(connFd, statusMsg)) {
+            *loop_exit_p = true;
+            return;
+        }
+        frontend_logger.info(statusMsg);
+
+        auto partitionFiles = fsmPartitioner.partitionWithParams(
+            graphFilePath,
+            graphIDInt,
+            nPartitions,
+            fsmMethod,
+            lambda,
+            100.0  // hdf parameter
+        );
+
+        if (partitionFiles.empty()) {
+            string message = "FSM partitioning failed";
+            if (!Utils::send_str_wrapper(connFd, message)) {
+                *loop_exit_p = true;
+                return;
+            }
+            frontend_logger.error(message);
+            return;
+        }
+
+        // Success - send partition file information
+        string successMsg = "FSM partitioning completed successfully. Created " + 
+                          std::to_string(partitionFiles.size()) + " partitions";
+        if (!Utils::send_str_wrapper(connFd, successMsg)) {
+            *loop_exit_p = true;
+            return;
+        }
+        frontend_logger.info(successMsg);
+
+        // Send partition file details
+        for (const auto& entry : partitionFiles) {
+            string partInfo = "Partition " + std::to_string(entry.first) + ": " + entry.second;
+            if (!Utils::send_str_wrapper(connFd, partInfo)) {
+                *loop_exit_p = true;
+                return;
+            }
+        }
+
+        if (!Utils::send_str_wrapper(connFd, DONE)) {
+            *loop_exit_p = true;
+            return;
+        }
+        
+        string completionMsg = isFilePath ? 
+            "FSM partitioning completed for new graph " + graphID + " (" + graphName + "_fsm)" :
+            "FSM partitioning completed for existing graph " + graphID;
+        frontend_logger.info(completionMsg);
+
+    } catch (const std::exception& e) {
+        string errorMsg = "Exception during FSM partitioning: " + string(e.what());
+        if (!Utils::send_str_wrapper(connFd, errorMsg)) {
+            *loop_exit_p = true;
+            return;
+        }
+        frontend_logger.error(errorMsg);
     }
 }

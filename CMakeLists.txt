@@ -38,6 +38,7 @@ set(HEADERS globals.h
         src/ml/trainer/JasmineGraphTrainingSchedular.h
         src/partitioner/local/JSONParser.h
         src/partitioner/local/MetisPartitioner.h
+        src/partitioner/local/FSMPartitioner.h
         src/partitioner/local/RDFParser.h
         src/partitioner/local/RDFPartitioner.h
         src/partitioner/stream/Partition.h
@@ -140,6 +141,7 @@ set(SOURCES src/backend/JasmineGraphBackend.cpp
         src/ml/trainer/JasmineGraphTrainingSchedular.cpp
         src/partitioner/local/JSONParser.cpp
         src/partitioner/local/MetisPartitioner.cpp
+        src/partitioner/local/FSMPartitioner.cpp
         src/partitioner/local/RDFParser.cpp
         src/partitioner/local/RDFPartitioner.cpp
         src/partitioner/stream/Partition.cpp
@@ -223,6 +225,32 @@ set(SOURCES src/backend/JasmineGraphBackend.cpp
 
 )
 
+# FSM Framework Integration - Add FSM sources
+set(FSM_SOURCES
+        ../fsm/src/graph.cpp
+        ../fsm/src/ne_graph.cpp
+        ../fsm/src/hep_graph.cpp
+        ../fsm/src/fsm_partitioner.cpp
+        ../fsm/src/ne_partitioner.cpp
+        ../fsm/src/hep_partitioner.cpp
+        ../fsm/src/ebv_partitioner.cpp
+        ../fsm/src/dbh_partitioner.cpp
+        ../fsm/src/hdrf_partitioner.cpp
+        ../fsm/src/rand_partitioner.cpp
+        ../fsm/src/fennel_partitioner.cpp
+        ../fsm/src/bpart_partitioner.cpp
+        ../fsm/src/hybridbl_partitioner.cpp
+        ../fsm/src/hybrid_partitioner.cpp
+        ../fsm/src/vertex2edgepart.cpp
+        ../fsm/src/conversions.cpp
+)
+
+# Add FSM include directory
+include_directories(../fsm/src)
+
+# Add FSM sources to the library
+list(APPEND SOURCES ${FSM_SOURCES})
+
 if (CMAKE_BUILD_TYPE STREQUAL "DEBUG")
     add_compile_options(-DUNIT_TEST)
     set(CMAKE_ENABLE_DEBUG ON)
@@ -299,6 +327,10 @@ else ()
 endif ()
 
 #TODO: Need to install the library separately
+# Find and link FSM dependencies
+find_package(glog REQUIRED)
+find_package(gflags REQUIRED)
+
 target_link_libraries(JasmineGraphLib PRIVATE sqlite3)
 target_link_libraries(JasmineGraphLib PRIVATE pthread)
 target_link_libraries(JasmineGraphLib PRIVATE rdkafka)
@@ -306,6 +338,7 @@ target_link_libraries(JasmineGraphLib PRIVATE Threads::Threads)
 target_link_libraries(JasmineGraphLib PRIVATE fmt)
 target_link_libraries(JasmineGraphLib PRIVATE /usr/lib/x86_64-linux-gnu/libxerces-c.so)
 target_link_libraries(JasmineGraphLib PRIVATE /usr/lib/x86_64-linux-gnu/libflatbuffers.a)
+target_link_libraries(JasmineGraphLib PRIVATE glog::glog gflags)
 target_link_libraries(JasmineGraphLib PRIVATE /usr/lib/x86_64-linux-gnu/libjsoncpp.so)
 target_link_libraries(JasmineGraphLib PRIVATE /usr/local/lib/libcppkafka.so)
 target_link_libraries(JasmineGraphLib PRIVATE /usr/local/libhdfs3/lib/libhdfs3.so)
