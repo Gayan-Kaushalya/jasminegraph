@@ -26,6 +26,7 @@ struct FSMFlags {
     bool write_low_degree_edgelist = false;
     bool extended_metrics = false;
     bool hybrid_NE = false;
+    bool fastmerge = false;
 };
 
 // Global FLAGS instance
@@ -49,6 +50,7 @@ inline FSMFlags FLAGS;
 #define FLAGS_write_low_degree_edgelist FLAGS.write_low_degree_edgelist
 #define FLAGS_extended_metrics FLAGS.extended_metrics
 #define FLAGS_hybrid_NE FLAGS.hybrid_NE
+#define FLAGS_fastmerge FLAGS.fastmerge
 
 // Create static logger for FSM framework
 static Logger fsm_framework_logger;
@@ -105,6 +107,7 @@ public:
 
 // Replace glog LOG and CHECK macros with JasmineGraph logger
 #define LOG(level) FSMLogStream(#level).stream()
+#define DLOG(level) FSMLogStream(#level).stream()  // Debug log (same as LOG in our case)
 #define CHECK(condition) FSMCheckStream(!(condition), std::string("CHECK failed: ") + #condition)
 #define CHECK_LT(a, b) FSMCheckStream(!((a) < (b)), std::string("CHECK_LT failed: ") + #a + " < " + #b)
 #define CHECK_LE(a, b) FSMCheckStream(!((a) <= (b)), std::string("CHECK_LE failed: ") + #a + " <= " + #b)
