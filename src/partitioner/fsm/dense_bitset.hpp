@@ -1,6 +1,7 @@
 #ifndef DENSE_BITSET_HPP
 #define DENSE_BITSET_HPP
 
+#include <cstring>
 #include "common.hpp"
 class dense_bitset
 {
