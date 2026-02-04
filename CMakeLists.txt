@@ -143,7 +143,6 @@ set(SOURCES src/backend/JasmineGraphBackend.cpp
         src/partitioner/local/MetisPartitioner.cpp
         src/partitioner/local/RDFParser.cpp
         src/partitioner/local/RDFPartitioner.cpp
-        src/partitioner/local/FSMPartitioner.cpp
         src/partitioner/local/GAMEPartitioner.cpp
         src/partitioner/game/ClusterGameTask.cpp
         src/partitioner/game/cm_sketch.cpp
