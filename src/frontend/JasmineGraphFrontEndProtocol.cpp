@@ -63,3 +63,4 @@ const string SEMANTIC_BEAM_SEARCH = "sbs";
 const string PROPERTIES = "prp";
 const string UPDATE_PARTITION_META = "update-partition-meta";
 const string META = "meta";
+const string GAME_PARTITION = "game";

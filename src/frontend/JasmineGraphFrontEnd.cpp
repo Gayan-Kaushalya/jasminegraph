@@ -20,6 +20,7 @@ limitations under the License.
 #include <cctype>
 #include <chrono>
 #include <ctime>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -36,6 +37,7 @@ limitations under the License.
 #include "../partitioner/local/MetisPartitioner.h"
 #include "../partitioner/local/RDFParser.h"
 #include "../partitioner/local/RDFPartitioner.h"
+#include "../partitioner/local/GAMEPartitioner.h"
 #include "../partitioner/stream/Partitioner.h"
 #include "../performance/metrics/PerformanceUtil.h"
 #include "../query/algorithms/linkprediction/JasminGraphLinkPredictor.h"
@@ -124,6 +126,7 @@ static void predict_command(std::string masterIP, int connFd, SQLiteDBInterface 
 static void start_remote_worker_command(int connFd, bool *loop_exit_p);
 static void sla_command(int connFd, SQLiteDBInterface *sqlite, PerformanceSQLiteDBInterface *perfSqlite,
                         bool *loop_exit_p);
+static void game_partition_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p);
 std::map<int, std::shared_ptr<::KGConstructionRate>> JasmineGraphFrontEnd::kgConstructionRates = {};
 static vector<DataPublisher *> getWorkerClients(SQLiteDBInterface *sqlite) {
     const vector<Utils::worker> &workerList = Utils::getWorkerList(sqlite);
@@ -275,6 +278,8 @@ void *frontendservicesesion(void *dummyPt) {
             start_remote_worker_command(connFd, &loop_exit);
         } else if (line.compare(SLA) == 0) {
             sla_command(connFd, sqlite, perfSqlite, &loop_exit);
+        } else if (line.compare(GAME_PARTITION) == 0) {
+            game_partition_command(masterIP, connFd, sqlite, &loop_exit);
         } else {
             frontend_logger.error("Message format not recognized " + line);
             int result_wr = write(connFd, INVALID_FORMAT.c_str(), INVALID_FORMAT.size());
@@ -3497,5 +3502,180 @@ void JasmineGraphFrontEnd::stop_graph_streaming(int connFd, bool *loop_exit_p) {
     } else {
         std::string message2 = "Graph Id not Found";
         int resultWr = write(connFd, message2.c_str(), message2.length());
+    }
+}
+
+static void game_partition_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p) {
+    frontend_logger.info("GAME partition command received");
+    
+    if (!Utils::send_str_wrapper(connFd, SEND)) {
+        *loop_exit_p = true;
+        return;
+    }
+
+    // Receive graph ID or file path
+    char data[DATA_BUFFER_SIZE];
+    string graphIDOrPath = Utils::read_str_trim_wrapper(connFd, data, FRONTEND_DATA_LENGTH);
+    frontend_logger.info("Received Graph ID or Path: " + graphIDOrPath);
+
+    // Determine if this is an existing graph ID or a new file path
+    bool isExistingGraph = false;
+    string graphID;
+    string graphFilePath;
+    string graphName;
+    
+    // Check if it's a valid graph ID
+    try {
+        int potentialID = std::stoi(graphIDOrPath);
+        string sqlStatement = "SELECT idgraph, upload_path, name FROM graph WHERE idgraph='" + graphIDOrPath + "'";
+        std::vector<vector<pair<string, string>>> output = sqlite->runSelect(sqlStatement);
+        
+        if (!output.empty() && output[0].size() >= 2) {
+            isExistingGraph = true;
+            graphID = graphIDOrPath;
+            graphFilePath = output[0][1].second;
+            if (output[0].size() >= 3) {
+                graphName = output[0][2].second;
+            }
+            frontend_logger.info("Using existing graph: " + graphID + " (" + graphName + ")");
+        }
+    } catch (...) {
+        // Not a number, treat as file path
+    }
+    
+    // If not existing graph, treat as file path
+    int graphIDInt;
+    if (!isExistingGraph) {
+        graphFilePath = graphIDOrPath;
+        
+        // Check if file exists
+        if (!std::filesystem::exists(graphFilePath)) {
+            string errorMsg = "File does not exist: " + graphFilePath;
+            Utils::send_str_wrapper(connFd, errorMsg);
+            frontend_logger.error(errorMsg);
+            return;
+        }
+        
+        // Extract graph name from file path
+        std::filesystem::path filePath(graphFilePath);
+        graphName = filePath.stem().string();
+        
+        // Get next available graph ID
+        string maxIDQuery = "SELECT MAX(idgraph) FROM graph";
+        std::vector<vector<pair<string, string>>> maxIDResult = sqlite->runSelect(maxIDQuery);
+        graphIDInt = 1;
+        if (!maxIDResult.empty() && !maxIDResult[0].empty()) {
+            try {
+                graphIDInt = std::stoi(maxIDResult[0][0].second) + 1;
+            } catch (...) {
+                graphIDInt = 1;
+            }
+        }
+        graphID = std::to_string(graphIDInt);
+        
+        // Insert graph entry
+        string sqlStatement = "INSERT INTO graph (idgraph, name, upload_path, upload_end_time, graph_status_idgraph_status) "
+                             "VALUES ('" + graphID + "', '" + graphName + "_game', '" + graphFilePath + "', "
+                             "datetime('now'), '1')";
+        sqlite->runInsert(sqlStatement);
+        
+        string msg = "Created new graph entry: ID=" + graphID + ", Name=" + graphName + "_game";
+        Utils::send_str_wrapper(connFd, msg);
+        frontend_logger.info(msg);
+    } else {
+        graphIDInt = std::stoi(graphID);
+    }
+
+    // Get partition count
+    if (!Utils::send_str_wrapper(connFd, SEND)) {
+        *loop_exit_p = true;
+        return;
+    }
+    
+    string partitionCountStr = Utils::read_str_trim_wrapper(connFd, data, FRONTEND_DATA_LENGTH);
+    int partitionCount = std::stoi(partitionCountStr);
+    frontend_logger.info("Partition count: " + std::to_string(partitionCount));
+
+    // Get alpha parameter
+    if (!Utils::send_str_wrapper(connFd, SEND)) {
+        *loop_exit_p = true;
+        return;
+    }
+    
+    string alphaStr = Utils::read_str_trim_wrapper(connFd, data, FRONTEND_DATA_LENGTH);
+    double alpha = std::stod(alphaStr);
+    frontend_logger.info("Alpha: " + std::to_string(alpha));
+
+    // Get beta parameter
+    if (!Utils::send_str_wrapper(connFd, SEND)) {
+        *loop_exit_p = true;
+        return;
+    }
+    
+    string betaStr = Utils::read_str_trim_wrapper(connFd, data, FRONTEND_DATA_LENGTH);
+    double beta = std::stod(betaStr);
+    frontend_logger.info("Beta: " + std::to_string(beta));
+
+    // Get k parameter (number of clusters)
+    if (!Utils::send_str_wrapper(connFd, SEND)) {
+        *loop_exit_p = true;
+        return;
+    }
+    
+    string kStr = Utils::read_str_trim_wrapper(connFd, data, FRONTEND_DATA_LENGTH);
+    int k = std::stoi(kStr);
+    frontend_logger.info("K (clusters): " + std::to_string(k));
+
+    try {
+        // Create GAME partitioner
+        GAMEPartitioner gamePartitioner(sqlite);
+        
+        // Execute partitioning
+        string statusMsg = "Starting GAME partitioning...";
+        Utils::send_str_wrapper(connFd, statusMsg);
+        frontend_logger.info(statusMsg);
+        
+        auto partitionFiles = gamePartitioner.partition(
+            graphFilePath,
+            graphIDInt,
+            partitionCount,
+            alpha,
+            beta,
+            k
+        );
+
+        if (partitionFiles.empty()) {
+            string message = "GAME partitioning failed";
+            Utils::send_str_wrapper(connFd, message);
+            frontend_logger.error(message);
+            return;
+        }
+
+        // Send success message with statistics
+        auto stats = gamePartitioner.getPartitionStats();
+        string successMsg = "GAME partitioning completed successfully. Created " + 
+                          std::to_string(partitionFiles.size()) + " partitions\n" +
+                          "Replication factor: " + stats["replicate_factor"] + "\n" +
+                          "Load balance: " + stats["load_balance"];
+        Utils::send_str_wrapper(connFd, successMsg);
+        frontend_logger.info(successMsg);
+
+        // Send partition file details
+        for (const auto& entry : partitionFiles) {
+            string partInfo = "Partition " + std::to_string(entry.first) + ": " + entry.second;
+            Utils::send_str_wrapper(connFd, partInfo);
+        }
+
+        Utils::send_str_wrapper(connFd, DONE);
+        
+        string completionMsg = isExistingGraph ? 
+            "GAME partitioning completed for existing graph " + graphID :
+            "GAME partitioning completed for new graph " + graphID + " (" + graphName + "_game)";
+        frontend_logger.info(completionMsg);
+
+    } catch (const std::exception& e) {
+        string errorMsg = "Exception during GAME partitioning: " + string(e.what());
+        Utils::send_str_wrapper(connFd, errorMsg);
+        frontend_logger.error(errorMsg);
     }
 }

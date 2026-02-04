@@ -40,6 +40,7 @@ set(HEADERS globals.h
         src/partitioner/local/MetisPartitioner.h
         src/partitioner/local/RDFParser.h
         src/partitioner/local/RDFPartitioner.h
+        src/partitioner/local/GAMEPartitioner.h
         src/partitioner/stream/Partition.h
         src/partitioner/stream/Partitioner.h
         src/performance/metrics/PerformanceUtil.h
@@ -142,6 +143,14 @@ set(SOURCES src/backend/JasmineGraphBackend.cpp
         src/partitioner/local/MetisPartitioner.cpp
         src/partitioner/local/RDFParser.cpp
         src/partitioner/local/RDFPartitioner.cpp
+        src/partitioner/local/FSMPartitioner.cpp
+        src/partitioner/local/GAMEPartitioner.cpp
+        src/partitioner/game/ClusterGameTask.cpp
+        src/partitioner/game/cm_sketch.cpp
+        src/partitioner/game/globalConfig.cpp
+        src/partitioner/game/Partitioner.cpp
+        src/partitioner/game/readGraph.cpp
+        src/partitioner/game/StreamCluster.cpp
         src/partitioner/stream/Partition.cpp
         src/partitioner/stream/Partitioner.cpp
         src/performance/metrics/PerformanceUtil.cpp
