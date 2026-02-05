@@ -205,11 +205,7 @@ def test(host, port):  # pylint: disable=too-many-branches
         logging.info('Testing adgr')
         send_and_expect_response(sock, 'adgr', ADGR, SEND, exit_on_failure=True)
         send_and_expect_response(
-<<<<<<< HEAD
             sock, 'adgr', b'powergrid|/tmp/jasminegraph/graphs/powergrid.dl', DONE, exit_on_failure=True)
-=======
-        sock, 'adgr', b'powergrid|/var/tmp/data/powergrid.dl', DONE, exit_on_failure=True)
->>>>>>> master
 
         print()
         logging.info('Testing lst after adgr')
@@ -710,7 +706,10 @@ def test(host, port):  # pylint: disable=too-many-branches
         # removing all the uploaded graphs after testing
         print()
         logging.info('Removing all uploaded graphs after testing')
+        send_and_expect_response(sock, 'lst before truncate',
+                                 LIST, b'|1|powergrid|/var/tmp/data/powergrid.dl|op|')
         send_and_expect_response(sock, 'truncate', TRUNCATE, DONE, exit_on_failure=True)
+        send_and_expect_response(sock, 'truncate', LIST, EMPTY)
 
         # shutting down workers after testing
         print()
