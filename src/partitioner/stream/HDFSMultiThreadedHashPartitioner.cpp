@@ -210,7 +210,8 @@ void HDFSMultiThreadedHashPartitioner::consumeLocalEdges(int partitionIndex, Jas
                                               " edges: " + filePath);
                 partitionMutexArray[partitionIndex].lock();
                 Utils::sendFileChunkToWorker(worker.hostname, worker.port, worker.dataPort, filePath, masterIp,
-                                             JasmineGraphInstanceProtocol::HDFS_LOCAL_STREAM_START);
+                                             JasmineGraphInstanceProtocol::HDFS_LOCAL_STREAM_START,
+                                             this->isEmbedGraph);
                 partitionMutexArray[partitionIndex].unlock();
             }
             break;
@@ -335,7 +336,8 @@ void HDFSMultiThreadedHashPartitioner::consumeEdgeCuts(int partitionIndex, Jasmi
                                               " edges: " + filePath);
                 partitionMutexArray[partitionIndex].lock();
                 Utils::sendFileChunkToWorker(worker.hostname, worker.port, worker.dataPort, filePath, masterIp,
-                                             JasmineGraphInstanceProtocol::HDFS_CENTRAL_STREAM_START);
+                                             JasmineGraphInstanceProtocol::HDFS_CENTRAL_STREAM_START,
+                                             this->isEmbedGraph);
                 partitionMutexArray[partitionIndex].unlock();
             }
             break;
