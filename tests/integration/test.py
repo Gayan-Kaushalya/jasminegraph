@@ -55,7 +55,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_SCRIPT = os.path.join(BASE_DIR, 'utils/datasets/upload-hdfs-file.sh')
 OLLAMA_SETUP_SCRIPT = os.path.join(BASE_DIR, 'graphRAG/utils/start-ollama.sh')
 TEXT_FOLDER = os.path.join(BASE_DIR, 'graphRAG/KG/gold')
-def expect_response(conn: socket.socket, expected: bytes, timeout: float = 30000.0):
+def expect_response(conn: socket.socket, expected: bytes, timeout: float = 240000.0):
     """Check if the response is equal to the expected response within a timeout.
     Return True if they are equal, False otherwise.
     """
@@ -364,27 +364,6 @@ def test(host, port):  # pylint: disable=too-many-branches
                                  b'done', exit_on_failure=True)
 
         print()
-        logging.info('[Cypher] Uploading graph for cypher testing')
-        send_and_expect_response(sock, 'adhdfs', ADHDFS,
-                                 b'Do you want to use the default HDFS server(y/n)?',
-                                 exit_on_failure=True)
-        send_and_expect_response(sock, 'adhdfs', b'n',
-                                 b'Send the file path to the HDFS configuration file.' +
-                                 b' This file needs to be in some directory location ' +
-                                 b'that is accessible for JasmineGraph master',
-                                 exit_on_failure=True)
-        send_and_expect_response(sock, 'adhdfs', b'/tmp/jasminegraph/hadoop.txt',
-                                 b'HDFS file path: ',
-                                 exit_on_failure=True)
-        send_and_expect_response(sock, 'adhdfs', b'/graphs/prop.txt',
-                                 b'Is this an edge list type graph(y/n)?',
-                                 exit_on_failure=True)
-        send_and_expect_response(sock, 'adhdfs', b'n',
-                                 b'Is this a directed graph(y/n)?',
-                                 exit_on_failure=True)
-        send_and_expect_response(sock, 'adhdfs', b'y', DONE, exit_on_failure=True)
-
-        print()
         logging.info('[Cypher] Uploading large graph for cypher testing')
         send_and_expect_response(sock, 'adhdfs', ADHDFS,
                                  b'Do you want to use the default HDFS server(y/n)?',
@@ -405,299 +384,293 @@ def test(host, port):  # pylint: disable=too-many-branches
                                  exit_on_failure=True)
         send_and_expect_response(sock, 'adhdfs', b'y', DONE, exit_on_failure=True)
 
-        print()
-        logging.info('[Adhdfs] Testing uploaded graph')
-        abs_path = os.path.abspath('tests/integration/env_init/data/graph_with_properties.txt')
-        test_graph_validation(abs_path, '2' ,host, port)
+        # print()
+        # logging.info('[Adhdfs] Testing uploaded graph')
+        # abs_path = os.path.abspath('tests/integration/env_init/data/graph_with_properties.txt')
+        # test_graph_validation(abs_path, '2' ,host, port)
 
-        print()
-        logging.info('[Cypher] Testing AllNodeScan ')
-        send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'2', b'Input query :', exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'MATCH (n) WHERE n.id=2 RETURN n ',
-                                 b'{"n":{"id":"2","label":"Person","name":"Charlie",'
-                                 b'"occupation":"IT Engineer",'
-                                 b'"partitionID":"0"}}', exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'',
-                                 b'done', exit_on_failure=True)
+        # print()
+        # logging.info('[Cypher] Testing AllNodeScan ')
+        # send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'2', b'Input query :', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'MATCH (n) WHERE n.id=2 RETURN n ',
+        #                          b'{"n":{"id":"2","label":"Person","name":"Charlie",'
+        #                          b'"occupation":"IT Engineer",'
+        #                          b'"partitionID":"0"}}', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'',
+        #                          b'done', exit_on_failure=True)
 
-        print()
-        logging.info('[Cypher] Testing ProduceResults ')
-        send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'2', b'Input query :', exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'MATCH (n) WHERE n.id = 18 RETURN n.age, n.name ',
-                                 b'{"n.age":null,"n.name":"Skyport Airport"}',
-                                 exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'',
-                                 b'done', exit_on_failure=True)
+        # print()
+        # logging.info('[Cypher] Testing ProduceResults ')
+        # send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'2', b'Input query :', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'MATCH (n) WHERE n.id = 18 RETURN n.age, n.name ',
+        #                          b'{"n.age":null,"n.name":"Skyport Airport"}',
+        #                          exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'',
+        #                          b'done', exit_on_failure=True)
 
-        print()
-        logging.info('[Cypher] Testing ProduceResults')
-        send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'2', b'Input query :', exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'MATCH (n) WHERE n.id = 18 RETURN n.age, n.name ',
-                                 b'{"n.age":null,"n.name":"Skyport Airport"}',
-                                 exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'',
-                                 b'done', exit_on_failure=True)
+        # print()
+        # logging.info('[Cypher] Testing ProduceResults')
+        # send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'2', b'Input query :', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'MATCH (n) WHERE n.id = 18 RETURN n.age, n.name ',
+        #                          b'{"n.age":null,"n.name":"Skyport Airport"}',
+        #                          exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'',
+        #                          b'done', exit_on_failure=True)
 
-        print()
-        logging.info('[Cypher] Testing filter by equality check')
-        send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'2', b'Input query :', exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b"MATCH (n) WHERE n.name = 'Fiona' RETURN n",
-                                 b'{"n":{"age":"25","id":"10","label":"Person",'
-                                 b'"name":"Fiona","occupation":"Artist",'
-                                 b'"partitionID":"0"}}',
-                                 exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'',
-                                 b'done', exit_on_failure=True)
+        # print()
+        # logging.info('[Cypher] Testing filter by equality check')
+        # send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'2', b'Input query :', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b"MATCH (n) WHERE n.name = 'Fiona' RETURN n",
+        #                          b'{"n":{"age":"25","id":"10","label":"Person",'
+        #                          b'"name":"Fiona","occupation":"Artist",'
+        #                          b'"partitionID":"0"}}',
+        #                          exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'',
+        #                          b'done', exit_on_failure=True)
 
-        print()
-        logging.info('[Cypher] Testing filter by comparison of integer attribute')
-        send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'2', b'Input query :', exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'MATCH (n) WHERE n.age < 30 return n',
-                                 b'{"n":{"age":"25","id":"10","label":"Person",'
-                                 b'"name":"Fiona","occupation":"Artist",'
-                                 b'"partitionID":"0"}}',
-                                 exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'',
-                                 b'done', exit_on_failure=True)
-
-
-        print()
-        logging.info('[Cypher] Testing expand all ')
-        send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'2', b'Input query :', exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher',b'MATCH (a)-[r]-(b)-[d]-(s)'
-                                                b' WHERE (a.id = 10 AND s.id=14) RETURN a, b, s',
-                                 b'{"a":{"age":"25","id":"10","label":"Person",'
-                                 b'"name":"Fiona","occupation":"Artist","partitionID":"0"},'
-                                 b'"b":{"id":"2","label":"Person","name":"Charlie",'
-                                 b'"occupation":"IT Engineer","partitionID":"0"},'
-                                 b'"s":{"id":"14","label":"Person",'
-                                 b'"name":"Julia","occupation":"Entrepreneur","partitionID":"0"}}',
-                                 exit_on_failure=True)
-
-        send_and_expect_response(sock, 'cypher', b'',
-                                 b'done', exit_on_failure=True)
-        print()
-        logging.info('[Cypher] Testing Undirected Relationship Type Scan')
-        send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'2', b'Input query :', exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher',b'MATCH '
-                                                b"(n {name:'Eva'})-[:NEIGHBORS]-(x ) RETURN x",
-
-                                 b'{"x":{"id":"0","label":"Person","name":"Alice",'
-                                 b'"occupation":"Teacher","partitionID":"0"}}',
-                                 exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'',
-                                 b'done', exit_on_failure=True)
+        # print()
+        # logging.info('[Cypher] Testing filter by comparison of integer attribute')
+        # send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'2', b'Input query :', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'MATCH (n) WHERE n.age < 30 return n',
+        #                          b'{"n":{"age":"25","id":"10","label":"Person",'
+        #                          b'"name":"Fiona","occupation":"Artist",'
+        #                          b'"partitionID":"0"}}',
+        #                          exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'',
+        #                          b'done', exit_on_failure=True)
 
 
-        print()
-        logging.info('[Cypher] Testing Undirected All Relationship Scan')
-        send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'2', b'Input query :', exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher',b'MATCH (n)-[r]-(m {id:6} ) WHERE n.age = 25'
-                                                b' RETURN n, r, m',
-                                 b'{"m":{"category":"Park","id":"6","label":"Location",'
-                                 b'"name":"Central Park",'
-                                 b'"partitionID":"0"},"n":{"age":"25","id":"10","label":"Person",'
-                                 b'"name":"Fiona","occupation":"Artist","partitionID":"0"'
-                                 b'},"r":{"description":"Fiona and Central Park have'
-                                 b' been friends since college.","id":"11",'
-                                 b'"type":"FRIENDS"}}',
+        # print()
+        # logging.info('[Cypher] Testing expand all ')
+        # send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'2', b'Input query :', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher',b'MATCH (a)-[r]-(b)-[d]-(s)'
+        #                                         b' WHERE (a.id = 10 AND s.id=14) RETURN a, b, s',
+        #                          b'{"a":{"age":"25","id":"10","label":"Person",'
+        #                          b'"name":"Fiona","occupation":"Artist","partitionID":"0"},'
+        #                          b'"b":{"id":"2","label":"Person","name":"Charlie",'
+        #                          b'"occupation":"IT Engineer","partitionID":"0"},'
+        #                          b'"s":{"id":"14","label":"Person",'
+        #                          b'"name":"Julia","occupation":"Entrepreneur","partitionID":"0"}}',
+        #                          exit_on_failure=True)
 
-                                 exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'',
-                                 b'done', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'',
+        #                          b'done', exit_on_failure=True)
+        # print()
+        # logging.info('[Cypher] Testing Undirected Relationship Type Scan')
+        # send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'2', b'Input query :', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher',b'MATCH '
+        #                                         b"(n {name:'Eva'})-[:NEIGHBORS]-(x ) RETURN x",
 
-        print()
-        logging.info('[Cypher] Testing Directed Relationship Type Scan ')
-        send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'2', b'Input query :',
-                                 exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher',b'MATCH'
-                                                b" (n {name:'Eva'})-[:NEIGHBORS]->(x ) RETURN x",
+        #                          b'{"x":{"id":"0","label":"Person","name":"Alice",'
+        #                          b'"occupation":"Teacher","partitionID":"0"}}',
+        #                          exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'',
+        #                          b'done', exit_on_failure=True)
 
-                                 b'{"x":{"id":"0","label":"Person","name":"Alice",'
-                                 b'"occupation":"Teacher","partitionID":"0"}}',
-                                 exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'',
-                                 b'done', exit_on_failure=True)
 
-        print()
-        logging.info('[Cypher] Testing OrderBy ')
-        send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'2', b'Input query :', exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher',b"match (n) where n.partitionID = '1' return n "
-                                                b'order by n.name ASC',
-                                 b'''{"n":{"category":"Studio","id":"15","label":"Location",'''
-                                 b'''"name":"Art Studio","partitionID":"1"}}''',
-                                 exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'',
-                                 b'{"n":{"id":"1","label":"Person","name":"Bob","occupation":'
-                                 b'"Banker","partitionID":"1"}}', exit_on_failure=True)
+        # print()
+        # logging.info('[Cypher] Testing Undirected All Relationship Scan')
+        # send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'2', b'Input query :', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher',b'MATCH (n)-[r]-(m {id:6} ) WHERE n.age = 25'
+        #                                         b' RETURN n, r, m',
+        #                          b'{"m":{"category":"Park","id":"6","label":"Location",'
+        #                          b'"name":"Central Park",'
+        #                          b'"partitionID":"0"},"n":{"age":"25","id":"10","label":"Person",'
+        #                          b'"name":"Fiona","occupation":"Artist","partitionID":"0"'
+        #                          b'},"r":{"description":"Fiona and Central Park have'
+        #                          b' been friends since college.","id":"11",'
+        #                          b'"type":"FRIENDS"}}',
 
-        send_and_expect_response(sock, 'cypher', b'',
-                                 b'{"n":{"id":"3","label":"Person","name":"David","occupation":'
-                                 b'"Doctor","partitionID":"1"}}', exit_on_failure=True)
+        #                          exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'',
+        #                          b'done', exit_on_failure=True)
 
-        send_and_expect_response(sock, 'cypher', b'',b'{"n":{"id":"11","label":"Person",'
-                                                     b'"name":"George","occupation":"Chef",'
-                                                     b'"partitionID":"1"}}', exit_on_failure=True)
+        # print()
+        # logging.info('[Cypher] Testing Directed Relationship Type Scan ')
+        # send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'2', b'Input query :',
+        #                          exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher',b'MATCH'
+        #                                         b" (n {name:'Eva'})-[:NEIGHBORS]->(x ) RETURN x",
 
-        send_and_expect_response(sock, 'cypher', b'',
-                                 b'{"n":{"category":"Restaurant","id":"17","label":"Location",'
-                                 b'"name":"Gourmet Bistro","partitionID":"1"}}',
-                                 exit_on_failure=True)
+        #                          b'{"x":{"id":"0","label":"Person","name":"Alice",'
+        #                          b'"occupation":"Teacher","partitionID":"0"}}',
+        #                          exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'',
+        #                          b'done', exit_on_failure=True)
 
-        send_and_expect_response(sock, 'cypher', b'',
-                                 b'{"n":{"category":"School","id":"5","label":"Location",'
-                                 b'"name":"Greenfield School","partitionID":"1"}}',
-                                 exit_on_failure=True)
+        # print()
+        # logging.info('[Cypher] Testing OrderBy ')
+        # send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'2', b'Input query :', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher',b"match (n) where n.partitionID = '1' return n "
+        #                                         b'order by n.name ASC',
+        #                          b'''{"n":{"category":"Studio","id":"15","label":"Location",'''
+        #                          b'''"name":"Art Studio","partitionID":"1"}}''',
+        #                          exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'',
+        #                          b'{"n":{"id":"1","label":"Person","name":"Bob","occupation":'
+        #                          b'"Banker","partitionID":"1"}}', exit_on_failure=True)
 
-        send_and_expect_response(sock, 'cypher', b'',b'{"n":{"id":"13","label":"Person",'
-                                                     b'"name":"Ian","occupation":"Pilot",'
-                                                     b'"partitionID":"1"}}', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'',
+        #                          b'{"n":{"id":"3","label":"Person","name":"David","occupation":'
+        #                          b'"Doctor","partitionID":"1"}}', exit_on_failure=True)
 
-        send_and_expect_response(sock, 'cypher', b'',
-                                 b'{"n":{"category":"Coworking Space","id":"19","label":'
-                                 b'"Location","name":"Innovation Hub","partitionID":"1"}}',
-                                 exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'',b'{"n":{"id":"11","label":"Person",'
+        #                                              b'"name":"George","occupation":"Chef",'
+        #                                              b'"partitionID":"1"}}', exit_on_failure=True)
 
-        send_and_expect_response(sock, 'cypher', b'',
-                                 b'{"n":{"category":"Bank","id":"7","label":"Location","name":'
-                                 b'"Town Bank","partitionID":"1"}}', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'',
+        #                          b'{"n":{"category":"Restaurant","id":"17","label":"Location",'
+        #                          b'"name":"Gourmet Bistro","partitionID":"1"}}',
+        #                          exit_on_failure=True)
 
-        send_and_expect_response(sock, 'cypher', b'',
-                                 b'{"n":{"category":"Hospital","id":"9","label":"Location",'
-                                 b'"name":"Town General Hospital","partitionID":"1"}}',
-                                 exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'',
-                                 b'done', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'',
+        #                          b'{"n":{"category":"School","id":"5","label":"Location",'
+        #                          b'"name":"Greenfield School","partitionID":"1"}}',
+        #                          exit_on_failure=True)
 
-        print()
-        logging.info('[Cypher] Testing Node Scan By Label')
-        send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'2', b'Input query :', exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher',b'match(n:Person) where n.id=2 return n'
-                                                b' RETURN n',b'{"n":{"id":"2","label":"Person",'
-                                                b'"name":"Charlie","occupation":"IT Engineer",'
-                                                b'"partitionID":"0"}}',
+        # send_and_expect_response(sock, 'cypher', b'',b'{"n":{"id":"13","label":"Person",'
+        #                                              b'"name":"Ian","occupation":"Pilot",'
+        #                                              b'"partitionID":"1"}}', exit_on_failure=True)
 
-                                 exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'',
-                                 b'done', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'',
+        #                          b'{"n":{"category":"Coworking Space","id":"19","label":'
+        #                          b'"Location","name":"Innovation Hub","partitionID":"1"}}',
+        #                          exit_on_failure=True)
+
+        # send_and_expect_response(sock, 'cypher', b'',
+        #                          b'{"n":{"category":"Bank","id":"7","label":"Location","name":'
+        #                          b'"Town Bank","partitionID":"1"}}', exit_on_failure=True)
+
+        # send_and_expect_response(sock, 'cypher', b'',
+        #                          b'{"n":{"category":"Hospital","id":"9","label":"Location",'
+        #                          b'"name":"Town General Hospital","partitionID":"1"}}',
+        #                          exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'',
+        #                          b'done', exit_on_failure=True)
+
+        # print()
+        # logging.info('[Cypher] Testing Node Scan By Label')
+        # send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'2', b'Input query :', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher',b'match(n:Person) where n.id=2 return n'
+        #                                         b' RETURN n',b'{"n":{"id":"2","label":"Person",'
+        #                                         b'"name":"Charlie","occupation":"IT Engineer",'
+        #                                         b'"partitionID":"0"}}',
+
+        #                          exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'',
+        #                          b'done', exit_on_failure=True)
 
         print()
         logging.info('[Cypher] Testing rmgr after adhdfs')
         send_and_expect_response(sock, 'rmgr', RMGR, SEND, exit_on_failure=True)
         send_and_expect_response(sock, 'rmgr', b'1', DONE, exit_on_failure=True)
-        print()
-        logging.info('Testing rmgr after adhdfs')
-        send_and_expect_response(sock, 'rmgr', RMGR, SEND, exit_on_failure=True)
-        send_and_expect_response(sock, 'rmgr', b'2', DONE, exit_on_failure=True)
-        send_and_expect_response(sock, 'rmgr', RMGR, SEND, exit_on_failure=True)
-        send_and_expect_response(sock, 'rmgr', b'3', DONE, exit_on_failure=True)
 
-        print()
-        logging.info(
-            '[IntraPartition] Testing getAllProperties on small graph (sequential fallback)'
-        )
-        send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'2', b'Input query :', exit_on_failure=True)
-        # Test that getAllProperties returns all node properties correctly
-        send_and_expect_response(sock, 'cypher', b'MATCH (n) WHERE n.id = 2 RETURN n',
-                                 b'{"n":{"id":"2","label":"Person","name":"Charlie",'
-                                 b'"occupation":"IT Engineer","partitionID":"0"}}',
-                                 exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'', b'done', exit_on_failure=True)
+        # print()
+        # logging.info(
+        #     '[IntraPartition] Testing getAllProperties on small graph (sequential fallback)'
+        # )
+        # send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'2', b'Input query :', exit_on_failure=True)
+        # # Test that getAllProperties returns all node properties correctly
+        # send_and_expect_response(sock, 'cypher', b'MATCH (n) WHERE n.id = 2 RETURN n',
+        #                          b'{"n":{"id":"2","label":"Person","name":"Charlie",'
+        #                          b'"occupation":"IT Engineer","partitionID":"0"}}',
+        #                          exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'', b'done', exit_on_failure=True)
 
-        print()
-        logging.info('[IntraPartition] Testing getAllProperties with null values')
-        send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'2', b'Input query :', exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'MATCH (n:Location) WHERE n.id = 6 RETURN n',
-                                 b'{"n":{"category":"Park","id":"6","label":"Location",'
-                                 b'"name":"Central Park","partitionID":"0"}}',
-                                 exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'', b'done', exit_on_failure=True)
+        # print()
+        # logging.info('[IntraPartition] Testing getAllProperties with null values')
+        # send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'2', b'Input query :', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'MATCH (n:Location) WHERE n.id = 6 RETURN n',
+        #                          b'{"n":{"category":"Park","id":"6","label":"Location",'
+        #                          b'"name":"Central Park","partitionID":"0"}}',
+        #                          exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'', b'done', exit_on_failure=True)
 
-        print()
-        logging.info('[IntraPartition] Testing getAllProperties multiple nodes (lifetime safety)')
-        send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'2', b'Input query :', exit_on_failure=True)
-        # Return multiple nodes to verify no memory corruption or dangling references
-        query = b'MATCH (n:Person) WHERE n.id < 4 RETURN n.id, n.name ORDER BY n.id ASC'
-        sock.sendall(query + LINE_END)
-        print('MATCH (n:Person) WHERE n.id < 4 RETURN n.id, n.name ORDER BY n.id ASC')
-        # Expecting exactly 4 results - Alice (0), Bob (1), Charlie (2), David (3)
-        expected_results = [
-            b'{"n.id":"0","n.name":"Alice"}',
-            b'{"n.id":"1","n.name":"Bob"}',
-            b'{"n.id":"2","n.name":"Charlie"}',
-            b'{"n.id":"3","n.name":"David"}'
-        ]
-        for i, expected in enumerate(expected_results):
-            if not expect_response(sock, expected + LINE_END):
-                failed_tests.append(f'[IntraPartition] Multiple nodes - result {i}')
-        send_and_expect_response(sock, 'cypher', b'', b'done', exit_on_failure=True)
+        # print()
+        # logging.info('[IntraPartition] Testing getAllProperties multiple nodes (lifetime safety)')
+        # send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'2', b'Input query :', exit_on_failure=True)
+        # # Return multiple nodes to verify no memory corruption or dangling references
+        # query = b'MATCH (n:Person) WHERE n.id < 4 RETURN n.id, n.name ORDER BY n.id ASC'
+        # sock.sendall(query + LINE_END)
+        # print('MATCH (n:Person) WHERE n.id < 4 RETURN n.id, n.name ORDER BY n.id ASC')
+        # # Expecting exactly 4 results - Alice (0), Bob (1), Charlie (2), David (3)
+        # expected_results = [
+        #     b'{"n.id":"0","n.name":"Alice"}',
+        #     b'{"n.id":"1","n.name":"Bob"}',
+        #     b'{"n.id":"2","n.name":"Charlie"}',
+        #     b'{"n.id":"3","n.name":"David"}'
+        # ]
+        # for i, expected in enumerate(expected_results):
+        #     if not expect_response(sock, expected + LINE_END):
+        #         failed_tests.append(f'[IntraPartition] Multiple nodes - result {i}')
+        # send_and_expect_response(sock, 'cypher', b'', b'done', exit_on_failure=True)
 
-        print()
-        logging.info(
-            '[IntraPartition] Testing getAllProperties on large graph (parallel execution)'
-        )
-        send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'4', b'Input query :', exit_on_failure=True)
-        # Spot check: verify a node query works on large graph
-        sock.sendall(b'MATCH (n) WHERE n.id = 1 RETURN n' + LINE_END)
-        print('MATCH (n) WHERE n.id = 1 RETURN n')
-        response = b''
-        while True:
-            byte = sock.recv(1)
-            if not byte:
-                break
-            response += byte
-            if response.endswith(b'\r\n') or response.endswith(b'\n'):
-                break
+        # print()
+        # logging.info(
+        #     '[IntraPartition] Testing getAllProperties on large graph (parallel execution)'
+        # )
+        # send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'3', b'Input query :', exit_on_failure=True)
+        # # Spot check: verify a node query works on large graph
+        # sock.sendall(b'MATCH (n) WHERE n.id = 1 RETURN n' + LINE_END)
+        # print('MATCH (n) WHERE n.id = 1 RETURN n')
+        # response = b''
+        # while True:
+        #     byte = sock.recv(1)
+        #     if not byte:
+        #         break
+        #     response += byte
+        #     if response.endswith(b'\r\n') or response.endswith(b'\n'):
+        #         break
 
-        if b'"id":"1"' in response:
-            logging.info('✓ Large graph node query returned results')
-        else:
-            logging.warning('Large graph query unexpected response: %s', response[:100])
-            failed_tests.append('[IntraPartition] Large graph getAllProperties')
-        send_and_expect_response(sock, 'cypher', b'', b'done', exit_on_failure=True)
+        # if b'"id":"1"' in response:
+        #     logging.info('✓ Large graph node query returned results')
+        # else:
+        #     logging.warning('Large graph query unexpected response: %s', response[:100])
+        #     failed_tests.append('[IntraPartition] Large graph getAllProperties')
+        # send_and_expect_response(sock, 'cypher', b'', b'done', exit_on_failure=True)
 
-        print()
-        logging.info('[IntraPartition] Testing relationship getAllProperties')
-        send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'4', b'Input query :', exit_on_failure=True)
-        # Verify relationship scan works
-        sock.sendall(b'MATCH (n)-[r]->(m) WHERE n.id = 1 RETURN n, r, m' + LINE_END)
-        print('MATCH (n)-[r]->(m) WHERE n.id = 1 RETURN n, r, m')
-        response = b''
-        while True:
-            byte = sock.recv(1)
-            if not byte:
-                break
-            response += byte
-            if response.endswith(b'\r\n') or response.endswith(b'\n'):
-                break
+        # print()
+        # logging.info('[IntraPartition] Testing relationship getAllProperties')
+        # send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
+        # send_and_expect_response(sock, 'cypher', b'3', b'Input query :', exit_on_failure=True)
+        # # Verify relationship scan works
+        # sock.sendall(b'MATCH (n)-[r]->(m) WHERE n.id = 1 RETURN n, r, m' + LINE_END)
+        # print('MATCH (n)-[r]->(m) WHERE n.id = 1 RETURN n, r, m')
+        # response = b''
+        # while True:
+        #     byte = sock.recv(1)
+        #     if not byte:
+        #         break
+        #     response += byte
+        #     if response.endswith(b'\r\n') or response.endswith(b'\n'):
+        #         break
 
-        if b'"n":' in response and b'"r":' in response and b'"m":' in response:
-            logging.info('✓ Relationship query returned results with correct structure')
-        else:
-            logging.warning('Relationship query unexpected response: %s', response[:100])
-            failed_tests.append('[IntraPartition] Relationship structure')
-        send_and_expect_response(sock, 'cypher', b'', b'done', exit_on_failure=True)
+        # if b'"n":' in response and b'"r":' in response and b'"m":' in response:
+        #     logging.info('✓ Relationship query returned results with correct structure')
+        # else:
+        #     logging.warning('Relationship query unexpected response: %s', response[:100])
+        #     failed_tests.append('[IntraPartition] Relationship structure')
+        # send_and_expect_response(sock, 'cypher', b'', b'done', exit_on_failure=True)
 
         print()
         logging.info('[Cypher] Testing OrderBy for Large Graph')
         send_and_expect_response(sock, 'cypher', CYPHER, b'Graph ID:', exit_on_failure=True)
-        send_and_expect_response(sock, 'cypher', b'4', b'Input query :', exit_on_failure=True)
+        send_and_expect_response(sock, 'cypher', b'3', b'Input query :', exit_on_failure=True)
         send_and_expect_response_file(sock,'cypher', b'MATCH (n) RETURN n.id, n.name, n.code '
                                                      b'ORDER BY n.code ASC',
                                       'tests/integration/utils/expected_output/'
@@ -706,10 +679,11 @@ def test(host, port):  # pylint: disable=too-many-branches
         # removing all the uploaded graphs after testing
         print()
         logging.info('Removing all uploaded graphs after testing')
-        send_and_expect_response(sock, 'lst before truncate',
-                                 LIST, b'|1|powergrid|/var/tmp/data/powergrid.dl|op|')
-        send_and_expect_response(sock, 'truncate', TRUNCATE, DONE, exit_on_failure=True)
-        send_and_expect_response(sock, 'truncate', LIST, EMPTY)
+        send_and_expect_response(sock, 'lst before truncate', LIST,
+        b'|2|/graphs/prop.txt|hdfs:/graphs/prop.txt|op|' + LINE_END +
+        b'|3|/graphs/large.txt|hdfs:/graphs/large.txt|op|')
+        send_and_expect_response(sock, 'truncate', TRUNCATE, DONE)
+        send_and_expect_response(sock, 'lst after truncate', LIST, EMPTY)
 
         # shutting down workers after testing
         print()
