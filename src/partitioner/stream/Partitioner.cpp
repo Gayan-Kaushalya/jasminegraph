@@ -235,3 +235,31 @@ std::pair<long, long> Partitioner::deserialize(std::string data) {
     streaming_partitioner_logger.debug("Vertext/Node 2 = " + stoi(v[1]));
     return {stoi(v[0]), stoi(v[1])};
 }
+bool Partitioner::isAnyPartitionOverThreshold(long threshold) {
+    for (const auto& partition : this->partitions) {
+        long edgeCount = const_cast<Partition&>(partition).getTotalEdgeCount(this->isDirect);
+        if (edgeCount > threshold) {
+            streaming_partitioner_logger.info("Partition exceeded threshold: " + std::to_string(edgeCount) + " edges");
+            return true;
+        }
+    }
+    return false;
+}
+
+int Partitioner::addNewPartition() {
+    int newPartitionId = this->numberOfPartitions;
+    streaming_partitioner_logger.info("Adding new partition with ID: " + std::to_string(newPartitionId));
+    
+    // Update existing partitions to accommodate the new partition
+    for (auto& partition : this->partitions) {
+        partition.expandEdgeCutsForNewPartition();
+    }
+    
+    // Create new partition with updated numberOfPartitions
+    this->partitions.push_back(Partition(newPartitionId, this->numberOfPartitions + 1));
+    
+    this->numberOfPartitions++;
+    streaming_partitioner_logger.info("Total partitions now: " + std::to_string(this->numberOfPartitions));
+    
+    return newPartitionId;
+}

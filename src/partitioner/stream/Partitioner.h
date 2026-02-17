@@ -61,6 +61,9 @@ class Partitioner {
     static std::pair<long, long> deserialize(std::string data);
     void updateMetaDB();
     void setGraphID(int graphId){this->graphID = graphId;};
+    bool isAnyPartitionOverThreshold(long threshold);
+    int addNewPartition();
+    int getNumberOfPartitions() const { return numberOfPartitions; }
 };
 
 #endif  // !JASMINE_PARTITIONER_HEADER

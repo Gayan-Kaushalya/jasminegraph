@@ -119,6 +119,8 @@ class Partition {
     void incrementVertexCount();
     void addToEdgeList(std::string vertex);
     std::mutex& getPartitionMutex() const { return partitionMutex; }  // Getter for mutex
+    long getTotalEdgeCount(bool isDirected = false);  // Returns total edges including edge cuts
+    void expandEdgeCutsForNewPartition();  // Add space for a new partition in edgeCuts
 
  private:
     bool isExistUnsafe(std::string vertext);  // Unsafe version - assumes caller holds lock

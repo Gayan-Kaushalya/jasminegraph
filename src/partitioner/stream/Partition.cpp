@@ -247,3 +247,27 @@ void Partition::addToEdgeList(std::string vertex) {
     }
 }
 
+long Partition::getTotalEdgeCount(bool isDirected) {
+    std::lock_guard<std::mutex> lock(partitionMutex);
+    long localEdges = static_cast<long>(getEdgesCount(isDirected));
+    long crossPartitionEdges = 0;
+    
+    // Count edge cuts
+    for (auto partition : this->edgeCuts) {
+        for (auto edgeCuts : partition) {
+            crossPartitionEdges += edgeCuts.second.size();
+        }
+    }
+    
+    if (!isDirected) {
+        // For undirected graphs, edge cuts are counted twice
+        crossPartitionEdges = crossPartitionEdges / 2;
+    }
+    
+    return localEdges + crossPartitionEdges;
+}
+void Partition::expandEdgeCutsForNewPartition() {
+    std::lock_guard<std::mutex> lock(partitionMutex);
+    this->edgeCuts.push_back({});
+    this->numberOfPartitions++;
+}

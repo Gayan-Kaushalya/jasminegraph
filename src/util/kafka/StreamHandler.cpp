@@ -69,6 +69,11 @@ void StreamHandler::listen_to_kafka_topic() {
         Utils::assignPartitionToWorker(graphId, i, workers.at(i).hostname, workers.at(i).port);
     }
 
+    // Threshold for partition edge count (30 million edges)
+    const long EDGE_COUNT_THRESHOLD = 30000000;
+    int edgesSinceLastCheck = 0;
+    const int CHECK_INTERVAL = 10000; // Check every 10,000 edges
+
     while (true) {
         cppkafka::Message msg = this->pollMessage();
 
@@ -96,6 +101,41 @@ void StreamHandler::listen_to_kafka_topic() {
         string sId = std::string(sourceJson["id"]);
         string dId = std::string(destinationJson["id"]);
         partitionedEdge partitionedEdge = graphPartitioner.addEdge({sId, dId});
+        
+        // Check for threshold exceedance periodically
+        edgesSinceLastCheck++;
+        if (edgesSinceLastCheck >= CHECK_INTERVAL) {
+            edgesSinceLastCheck = 0;
+            if (graphPartitioner.isAnyPartitionOverThreshold(EDGE_COUNT_THRESHOLD)) {
+                frontend_logger.info("Partition threshold exceeded! Creating new partition and spawning worker...");
+                
+                // Create new partition
+                int newPartitionId = graphPartitioner.addNewPartition();
+                
+                // Get available workers from server
+                std::vector<JasmineGraphServer::worker> availableWorkers = server->workers(workerClients.size() + 1);
+                
+                if (availableWorkers.size() > workerClients.size()) {
+                    // Add new worker client
+                    JasmineGraphServer::worker newWorker = availableWorkers.back();
+                    DataPublisher *newWorkerClient = new DataPublisher(
+                        std::stoi(newWorker.port),
+                        newWorker.hostname,
+                        std::stoi(newWorker.dataPort)
+                    );
+                    workerClients.push_back(newWorkerClient);
+                    
+                    // Assign new partition to new worker
+                    Utils::assignPartitionToWorker(graphId, newPartitionId, newWorker.hostname, std::stoi(newWorker.port));
+                    
+                    frontend_logger.info("Successfully created partition " + std::to_string(newPartitionId) + 
+                                        " and assigned to worker at " + newWorker.hostname + ":" + newWorker.port);
+                } else {
+                    frontend_logger.error("Failed to spawn new worker for partition " + std::to_string(newPartitionId));
+                }
+            }
+        }
+        
         sourceJson["pid"] = partitionedEdge[0].second;
         destinationJson["pid"] = partitionedEdge[1].second;
         string source = sourceJson.dump();
@@ -106,7 +146,7 @@ void StreamHandler::listen_to_kafka_topic() {
         obj["properties"] = prop;
         long part_s = partitionedEdge[0].second;
         long part_d = partitionedEdge[1].second;
-        int n_workers = atoi((Utils::getJasmineGraphProperty("org.jasminegraph.server.nworkers")).c_str());
+        int n_workers = workerClients.size();  // Use actual number of worker clients
         long temp_s = part_s % n_workers;
         long temp_d = part_d % n_workers;
 
