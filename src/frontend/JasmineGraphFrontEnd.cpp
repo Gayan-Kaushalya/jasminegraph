@@ -38,6 +38,7 @@ limitations under the License.
 #include "../partitioner/local/RDFPartitioner.h"
 #include "../partitioner/stream/Partitioner.h"
 #include "../performance/metrics/PerformanceUtil.h"
+#include "../partitioner/local/DNEPartitioner.h"
 #include "../query/algorithms/linkprediction/JasminGraphLinkPredictor.h"
 #include "../query/processor/cypher/astbuilder/ASTBuilder.h"
 #include "../query/processor/cypher/astbuilder/ASTNode.h"
@@ -3507,5 +3508,135 @@ void JasmineGraphFrontEnd::stop_graph_streaming(int connFd, bool *loop_exit_p) {
     } else {
         std::string message2 = "Graph Id not Found";
         int resultWr = write(connFd, message2.c_str(), message2.length());
+    }
+}
+
+static void dne_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p) {
+    frontend_logger.info("Starting DNE partitioning command");
+    
+    // Request graph name
+    int result_wr = write(connFd, "send graph name\r\n", 17);
+    if (result_wr < 0) {
+        frontend_logger.error("Error writing to socket");
+        *loop_exit_p = true;
+        return;
+    }
+    
+    char graph_name[FRONTEND_DATA_LENGTH + 1];
+    bzero(graph_name, FRONTEND_DATA_LENGTH + 1);
+    read(connFd, graph_name, FRONTEND_DATA_LENGTH);
+    string graphName(graph_name);
+    graphName = Utils::trim_copy(graphName);
+    frontend_logger.info("Graph name received: " + graphName);
+    
+    // Request graph path
+    result_wr = write(connFd, "send graph path\r\n", 17);
+    if (result_wr < 0) {
+        frontend_logger.error("Error writing to socket");
+        *loop_exit_p = true;
+        return;
+    }
+    
+    char graph_path[FRONTEND_DATA_LENGTH + 1];
+    bzero(graph_path, FRONTEND_DATA_LENGTH + 1);
+    read(connFd, graph_path, FRONTEND_DATA_LENGTH);
+    string graphPath(graph_path);
+    graphPath = Utils::trim_copy(graphPath);
+    frontend_logger.info("Graph path received: " + graphPath);
+    
+    // Request number of partitions
+    result_wr = write(connFd, "send number of partitions\r\n", 27);
+    if (result_wr < 0) {
+        frontend_logger.error("Error writing to socket");
+        *loop_exit_p = true;
+        return;
+    }
+    
+    char partition_count[FRONTEND_DATA_LENGTH + 1];
+    bzero(partition_count, FRONTEND_DATA_LENGTH + 1);
+    read(connFd, partition_count, FRONTEND_DATA_LENGTH);
+    string partitionCount(partition_count);
+    partitionCount = Utils::trim_copy(partitionCount);
+    int numPartitions = std::stoi(partitionCount);
+    frontend_logger.info("Number of partitions: " + to_string(numPartitions));
+    
+    // Check if graph file exists
+    if (!Utils::fileExists(graphPath)) {
+        frontend_logger.error("Graph file does not exist: " + graphPath);
+        result_wr = write(connFd, "error: graph file not found\r\n", 29);
+        if (result_wr < 0) {
+            frontend_logger.error("Error writing to socket");
+        }
+        *loop_exit_p = true;
+        return;
+    }
+    
+    // Insert graph record into metadb
+    std::time_t time = chrono::system_clock::to_time_t(chrono::system_clock::now());
+    string uploadStartTime = ctime(&time);
+    uploadStartTime = Utils::trim_copy(uploadStartTime);
+    
+    string sqlStatement =
+        "INSERT INTO graph (name,upload_path,upload_start_time,upload_end_time,graph_status_idgraph_status,"
+        "vertexcount,centralpartitioncount,edgecount) VALUES(\"" +
+        graphName + "\", \"" + graphPath + "\", \"" + uploadStartTime + "\", \"\",\"" +
+        to_string(Conts::GRAPH_STATUS::LOADING) + "\", \"\", \"\", \"\")";
+    int graphID = sqlite->runInsert(sqlStatement);
+    
+    if (graphID < 0) {
+        frontend_logger.error("Failed to insert graph into database");
+        result_wr = write(connFd, "error: database insertion failed\r\n", 35);
+        if (result_wr < 0) {
+            frontend_logger.error("Error writing to socket");
+        }
+        *loop_exit_p = true;
+        return;
+    }
+    
+    frontend_logger.info("Graph record created with ID: " + to_string(graphID));
+    
+    // Prepare output path
+    string outputPath = Utils::getJasmineGraphProperty("org.jasminegraph.server.instance.datafolder") + 
+                       "/" + to_string(graphID) + "_";
+    
+    // Create DNEPartitioner instance and partition the graph
+    DNEPartitioner dnePartitioner(sqlite);
+    vector<std::map<int, string>> fullFileList = dnePartitioner.partitionGraph(graphID, graphPath, outputPath, numPartitions);
+    
+    if (!fullFileList.empty()) {
+        frontend_logger.info("DNE partitioning completed successfully for graph ID: " + to_string(graphID));
+        
+        // Upload partition files to workers
+        JasmineGraphServer *server = JasmineGraphServer::getInstance();
+        server->uploadGraphLocally(graphID, Conts::GRAPH_TYPE_NORMAL, fullFileList, masterIP);
+        
+        // Clean up temporary directory if it exists
+        string tempDir = Utils::getHomeDir() + "/.jasminegraph/tmp/" + to_string(graphID);
+        if (Utils::fileExists(tempDir)) {
+            Utils::deleteDirectory(tempDir);
+        }
+        
+        JasmineGraphFrontEndCommon::getAndUpdateUploadTime(to_string(graphID), sqlite);
+        
+        string message = "dne partitioning completed for graph ID: " + to_string(graphID);
+        result_wr = write(connFd, message.c_str(), message.size());
+        if (result_wr < 0) {
+            frontend_logger.error("Error writing to socket");
+            *loop_exit_p = true;
+            return;
+        }
+        result_wr = write(connFd, Conts::CARRIAGE_RETURN_NEW_LINE.c_str(), Conts::CARRIAGE_RETURN_NEW_LINE.size());
+        if (result_wr < 0) {
+            frontend_logger.error("Error writing to socket");
+            *loop_exit_p = true;
+            return;
+        }
+    } else {
+        frontend_logger.error("DNE partitioning failed");
+        result_wr = write(connFd, "error: dne partitioning failed\r\n", 32);
+        if (result_wr < 0) {
+            frontend_logger.error("Error writing to socket");
+        }
+        *loop_exit_p = true;
     }
 }
