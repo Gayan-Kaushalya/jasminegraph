@@ -58,6 +58,8 @@ limitations under the License.
 #include "../util/hdfs/HDFSStreamHandler.h"
 #include "../util/kafka/KafkaCC.h"
 #include "../util/kafka/StreamHandler.h"
+#include "../util/zmq/ZmqCC.h"
+#include "../util/zmq/ZmqStreamHandler.h"
 #include "../util/logger/Logger.h"
 #include "/home/ubuntu/software/antlr/CypherLexer.h"
 #include "/home/ubuntu/software/antlr/CypherParser.h"
@@ -109,6 +111,9 @@ static void addStreamHDFSCommand(std::string masterIP, int connFd, std::string &
                                  std::thread &inputStreamHandlerThread, int numberOfPartitions,
                                  SQLiteDBInterface *sqlite, bool *loop_exit_p);
 static void stop_stream_kafka_command(int connFd, KafkaConnector *kstream, bool *loop_exit_p);
+static void add_stream_zmq_command(int connFd, thread &input_stream_handler_thread,
+                                    vector<DataPublisher *> &workerClients, int numberOfPartitions,
+                                    SQLiteDBInterface *sqlite, bool *loop_exit_p);
 static void process_dataset_command(int connFd, bool *loop_exit_p);
 static void triangles_command(std::string masterIP, int connFd, SQLiteDBInterface *sqlite,
                               PerformanceSQLiteDBInterface *perfSqlite, JobScheduler *jobScheduler, bool *loop_exit_p);
@@ -235,6 +240,13 @@ void *frontendservicesesion(void *dummyPt) {
             }
             add_stream_kafka_command(connFd, kafka_server_IP, configs, kstream, input_stream_handler, workerClients,
                                      numberOfPartitions, sqlite, &loop_exit);
+        } else if (line.compare(ADD_STREAM_ZMQ) == 0) {
+            if (!workerClientsInitialized) {
+                workerClients = getWorkerClients(sqlite);
+                workerClientsInitialized = true;
+            }
+            add_stream_zmq_command(connFd, input_stream_handler, workerClients,
+                                   numberOfPartitions, sqlite, &loop_exit);
         } else if (line.compare(ADD_STREAM_HDFS) == 0) {
             addStreamHDFSCommand(masterIP, connFd, hdfsServerIp, input_stream_handler, numberOfPartitions, sqlite,
                                  &loop_exit);
@@ -1551,6 +1563,251 @@ static void add_stream_kafka_command(int connFd, std::string &kafka_server_IP, c
     }
     frontend_logger.info("Start listening to " + topic_name_s);
     input_stream_handler_thread = thread(&StreamHandler::listen_to_kafka_topic, stream_handler);
+}
+
+static void add_stream_zmq_command(int connFd, thread &input_stream_handler_thread,
+                                    vector<DataPublisher *> &workerClients, int numberOfPartitions,
+                                    SQLiteDBInterface *sqlite, bool *loop_exit_p) {
+    string exist = "Do you want to stream into existing graph(y/n) ? ";
+    int result_wr = write(connFd, exist.c_str(), exist.length());
+    if (result_wr < 0) {
+        frontend_logger.error("Error writing to socket");
+        *loop_exit_p = true;
+        return;
+    }
+
+    // Get user response.
+    string existingGraph = Utils::getFrontendInput(connFd);
+    string graphId;
+    string partitionAlgo;
+    string direction;
+
+    if (existingGraph == "y") {
+        string existingGraphIdMsg = "Send the existing graph ID ? ";
+        result_wr = write(connFd, existingGraphIdMsg.c_str(), existingGraphIdMsg.length());
+        if (result_wr < 0) {
+            frontend_logger.error("Error writing to socket");
+            *loop_exit_p = true;
+            return;
+        }
+        // Get user response.
+        string existingGraphId = Utils::getFrontendInput(connFd);
+
+        bool isExist = sqlite->isGraphIdExist(existingGraphId);
+        if (!isExist) {
+            string errorMsg = "Error: Graph ID you entered does not exist";
+            result_wr = write(connFd, errorMsg.c_str(), errorMsg.length());
+            if (result_wr < 0) {
+                frontend_logger.error("Error writing to socket");
+                *loop_exit_p = true;
+                return;
+            }
+            return;
+        }
+
+        string existGraphIdSuccessMsg = "Using existing graph";
+        result_wr = write(connFd, existGraphIdSuccessMsg.c_str(), existGraphIdSuccessMsg.length());
+        if (result_wr < 0) {
+            frontend_logger.error("Error writing to socket");
+            *loop_exit_p = true;
+            return;
+        }
+        result_wr = write(connFd, Conts::CARRIAGE_RETURN_NEW_LINE.c_str(), Conts::CARRIAGE_RETURN_NEW_LINE.size());
+        if (result_wr < 0) {
+            frontend_logger.error("Error writing to socket");
+            *loop_exit_p = true;
+            return;
+        }
+        graphId = existingGraphId;
+        partitionAlgo = sqlite->getPartitionAlgoByGraphID(graphId);
+        direction = sqlite->getDirectionByGraphID(graphId);
+
+    } else {
+        int nextID = sqlite->getNextGraphId();
+        if (nextID < 0) {
+            return;
+        }
+        graphId = to_string(nextID);
+        string defaultIdMsg = "Do you use default graph ID: " + graphId + "(y/n) ? ";
+        result_wr = write(connFd, defaultIdMsg.c_str(), defaultIdMsg.length());
+        if (result_wr < 0) {
+            frontend_logger.error("Error writing to socket");
+            *loop_exit_p = true;
+            return;
+        }
+        // Get user response.
+        string isDefaultGraphId = Utils::getFrontendInput(connFd);
+
+        if (isDefaultGraphId != "y") {
+            string inputGraphIdMsg = "Input your graph ID: ";
+            result_wr = write(connFd, inputGraphIdMsg.c_str(), inputGraphIdMsg.length());
+            if (result_wr < 0) {
+                frontend_logger.error("Error writing to socket");
+                *loop_exit_p = true;
+                return;
+            }
+
+            // Get user response.
+            string userGraphId = Utils::getFrontendInput(connFd);
+
+            bool isExist = sqlite->isGraphIdExist(userGraphId);
+            if (isExist) {
+                string errorMsg = "Error: Graph ID you entered already exists";
+                result_wr = write(connFd, errorMsg.c_str(), errorMsg.length());
+                if (result_wr < 0) {
+                    frontend_logger.error("Error writing to socket");
+                    *loop_exit_p = true;
+                    return;
+                }
+                return;
+            }
+
+            string userGraphIdSuccessMsg = "Set graph ID successfully";
+            result_wr = write(connFd, userGraphIdSuccessMsg.c_str(), userGraphIdSuccessMsg.length());
+            if (result_wr < 0) {
+                frontend_logger.error("Error writing to socket");
+                *loop_exit_p = true;
+                return;
+            }
+            result_wr = write(connFd, Conts::CARRIAGE_RETURN_NEW_LINE.c_str(), Conts::CARRIAGE_RETURN_NEW_LINE.size());
+            if (result_wr < 0) {
+                frontend_logger.error("Error writing to socket");
+                *loop_exit_p = true;
+                return;
+            }
+            graphId = userGraphId;
+        }
+
+        std::string partitionSelectionMsg =
+            "Select the partitioning technique\n"
+            "\toption 1: Hash partitioning\n"
+            "\toption 2: Fennel partitioning\n"
+            "\toption 3: LDG partitioning\n"
+            "Choose an option(1,2,3): ";
+        result_wr = write(connFd, partitionSelectionMsg.c_str(), partitionSelectionMsg.length());
+        if (result_wr < 0) {
+            frontend_logger.error("Error writing to socket");
+            *loop_exit_p = true;
+            return;
+        }
+        // Get user response.
+        string partitionAlgoInput = Utils::getFrontendInput(connFd);
+
+        if (partitionAlgoInput == "1" || partitionAlgoInput == "2" || partitionAlgoInput == "3") {
+            string partition_success_msg = "Set partition technique: " + partitionAlgoInput;
+            result_wr = write(connFd, partition_success_msg.c_str(), partition_success_msg.length());
+            if (result_wr < 0) {
+                frontend_logger.error("Error writing to socket");
+                *loop_exit_p = true;
+                return;
+            }
+            result_wr = write(connFd, Conts::CARRIAGE_RETURN_NEW_LINE.c_str(), Conts::CARRIAGE_RETURN_NEW_LINE.size());
+            if (result_wr < 0) {
+                frontend_logger.error("Error writing to socket");
+                *loop_exit_p = true;
+                return;
+            }
+            partitionAlgo = partitionAlgoInput;
+        } else {
+            string errorMsg = "Error: invalid partition option: " + partitionAlgoInput;
+            result_wr = write(connFd, errorMsg.c_str(), errorMsg.length());
+            if (result_wr < 0) {
+                frontend_logger.error("Error writing to socket");
+                *loop_exit_p = true;
+                return;
+            }
+            return;
+        }
+
+        string checkDirection = "Is this graph Directed (y/n)? ";
+        result_wr = write(connFd, checkDirection.c_str(), checkDirection.length());
+        if (result_wr < 0) {
+            frontend_logger.error("Error writing to socket");
+            *loop_exit_p = true;
+            return;
+        }
+        // Get user response.
+        string isDirected = Utils::getFrontendInput(connFd);
+        if (isDirected == "y") {
+            direction = Conts::DIRECTED;
+        } else {
+            direction = Conts::UNDIRECTED;
+        }
+
+        string checkGraphType = "Graph type received";
+        result_wr = write(connFd, checkGraphType.c_str(), checkGraphType.length());
+        if (result_wr < 0) {
+            frontend_logger.error("Error writing to socket");
+            *loop_exit_p = true;
+            return;
+        }
+        result_wr = write(connFd, Conts::CARRIAGE_RETURN_NEW_LINE.c_str(), Conts::CARRIAGE_RETURN_NEW_LINE.size());
+        if (result_wr < 0) {
+            frontend_logger.error("Error writing to socket");
+            *loop_exit_p = true;
+            return;
+        }
+    }
+
+    frontend_logger.info("Start serving `" + ADD_STREAM_ZMQ + "` command");
+    string message = "Send ZeroMQ endpoint (e.g. tcp://host:port): ";
+    result_wr = write(connFd, message.c_str(), message.length());
+    if (result_wr < 0) {
+        frontend_logger.error("Error writing to socket");
+        *loop_exit_p = true;
+        return;
+    }
+    result_wr = write(connFd, Conts::CARRIAGE_RETURN_NEW_LINE.c_str(), Conts::CARRIAGE_RETURN_NEW_LINE.size());
+    if (result_wr < 0) {
+        frontend_logger.error("Error writing to socket");
+        *loop_exit_p = true;
+        return;
+    }
+
+    // Get the ZMQ endpoint from the user
+    char zmq_endpoint[FRONTEND_DATA_LENGTH + 1];
+    bzero(zmq_endpoint, FRONTEND_DATA_LENGTH + 1);
+    read(connFd, zmq_endpoint, FRONTEND_DATA_LENGTH);
+    string zmq_endpoint_s(zmq_endpoint);
+    zmq_endpoint_s = Utils::trim_copy(zmq_endpoint_s);
+    string con_message = "Received the ZeroMQ endpoint: " + zmq_endpoint_s;
+    int con_result_wr = write(connFd, con_message.c_str(), con_message.length());
+    if (con_result_wr < 0) {
+        frontend_logger.error("Error writing to socket");
+        *loop_exit_p = true;
+        return;
+    }
+    result_wr = write(connFd, Conts::CARRIAGE_RETURN_NEW_LINE.c_str(), Conts::CARRIAGE_RETURN_NEW_LINE.size());
+    if (result_wr < 0) {
+        frontend_logger.error("Error writing to socket");
+        *loop_exit_p = true;
+        return;
+    }
+
+    ZmqConnector *zmqConn = new ZmqConnector(zmq_endpoint_s);
+    ZmqStreamHandler *zmq_stream_handler = new ZmqStreamHandler(zmqConn, numberOfPartitions, workerClients, sqlite,
+                                                                 stoi(graphId), direction == Conts::DIRECTED,
+                                                                 spt::getPartitioner(partitionAlgo));
+
+    if (existingGraph != "y") {
+        string path = "zmq:\\\\" + zmq_endpoint_s;
+        std::time_t time = chrono::system_clock::to_time_t(chrono::system_clock::now());
+        string uploadStartTime = ctime(&time);
+        string sqlStatement =
+            "INSERT INTO graph (idgraph,id_algorithm,name,upload_path, upload_start_time, upload_end_time,"
+            "graph_status_idgraph_status, vertexcount, centralpartitioncount, edgecount, is_directed) VALUES(" +
+            graphId + "," + partitionAlgo + ",\"" + zmq_endpoint_s + "\", \"" + path + "\", \"" + uploadStartTime +
+            "\", \"\",\"" + to_string(Conts::GRAPH_STATUS::STREAMING) + "\", \"\"," + to_string(numberOfPartitions) +
+            ", \"\",\"" + direction + "\")";
+        int newGraphID = sqlite->runInsert(sqlStatement);
+    } else {
+        std::string sqlStatement =
+            "UPDATE graph SET graph_status_idgraph_status =" + to_string(Conts::GRAPH_STATUS::STREAMING) +
+            " WHERE idgraph = " + graphId;
+        sqlite->runUpdate(sqlStatement);
+    }
+    frontend_logger.info("Start listening to ZMQ endpoint " + zmq_endpoint_s);
+    input_stream_handler_thread = thread(&ZmqStreamHandler::listen_to_zmq_endpoint, zmq_stream_handler);
 }
 
 void addStreamHDFSCommand(std::string masterIP, int connFd, std::string &hdfsServerIp,

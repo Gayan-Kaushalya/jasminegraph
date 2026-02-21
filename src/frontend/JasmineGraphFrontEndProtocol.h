@@ -64,6 +64,7 @@ extern const string OUTPUT_FILE_NAME;
 extern const string OUTPUT_FILE_PATH;
 extern const string ADD_STREAM;
 extern const string ADD_STREAM_KAFKA;
+extern const string ADD_STREAM_ZMQ;
 extern const string ADD_STREAM_HDFS;
 extern const string CONSTRUCT_KG;
 extern const string  STOP_CONSTRUCT_KG;

@@ -70,6 +70,8 @@ set(HEADERS globals.h
         src/util/kafka/KafkaCC.h
         src/util/kafka/StreamHandler.h
         src/util/kafka/InstanceStreamHandler.h
+        src/util/zmq/ZmqCC.h
+        src/util/zmq/ZmqStreamHandler.h
         src/util/logger/Logger.h
         src/util/scheduler/Cron.h
         src/util/scheduler/InterruptableSleep.h
@@ -170,6 +172,8 @@ set(SOURCES src/backend/JasmineGraphBackend.cpp
         src/util/kafka/KafkaCC.cpp
         src/util/kafka/StreamHandler.cpp
         src/util/kafka/InstanceStreamHandler.cpp
+        src/util/zmq/ZmqCC.cpp
+        src/util/zmq/ZmqStreamHandler.cpp
         src/util/logger/Logger.cpp
         src/util/scheduler/SchedulerService.cpp
         src/util/telemetry/OpenTelemetryUtil.cpp
@@ -312,6 +316,7 @@ target_link_libraries(JasmineGraphLib PRIVATE /usr/lib/x86_64-linux-gnu/libxerce
 target_link_libraries(JasmineGraphLib PRIVATE /usr/lib/x86_64-linux-gnu/libflatbuffers.a)
 target_link_libraries(JasmineGraphLib PRIVATE /usr/lib/x86_64-linux-gnu/libjsoncpp.so)
 target_link_libraries(JasmineGraphLib PRIVATE /usr/local/lib/libcppkafka.so)
+target_link_libraries(JasmineGraphLib PRIVATE zmq)
 target_link_libraries(JasmineGraphLib PRIVATE /usr/local/libhdfs3/lib/libhdfs3.so)
 target_link_libraries(JasmineGraphLib PRIVATE OpenMP::OpenMP_CXX faiss openblas)
 

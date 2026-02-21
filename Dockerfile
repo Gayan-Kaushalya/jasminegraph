@@ -16,6 +16,14 @@ RUN apt-get update && apt-get install -y git cmake build-essential \
     && ldconfig \
     && cd / && rm -rf /tmp/CRoaring
 
+# Install ZeroMQ and cppzmq header-only binding
+RUN apt-get update && apt-get install -y libzmq3-dev \
+    && cd /tmp \
+    && git clone --depth 1 https://github.com/zeromq/cppzmq.git \
+    && cp cppzmq/zmq.hpp /usr/local/include/ \
+    && cp cppzmq/zmq_addon.hpp /usr/local/include/ \
+    && rm -rf /tmp/cppzmq
+
 ENV HOME="/home/ubuntu"
 ENV JASMINEGRAPH_HOME="${HOME}/software/jasminegraph"
 
