@@ -1750,7 +1750,7 @@ static void add_stream_zmq_command(int connFd, thread &input_stream_handler_thre
     }
 
     frontend_logger.info("Start serving `" + ADD_STREAM_ZMQ + "` command");
-    string message = "Send ZeroMQ endpoint (e.g. tcp://host:port): ";
+    string message = "Enter ZMQ bind port (e.g. 5555): ";
     result_wr = write(connFd, message.c_str(), message.length());
     if (result_wr < 0) {
         frontend_logger.error("Error writing to socket");
@@ -1764,13 +1764,14 @@ static void add_stream_zmq_command(int connFd, thread &input_stream_handler_thre
         return;
     }
 
-    // Get the ZMQ endpoint from the user
-    char zmq_endpoint[FRONTEND_DATA_LENGTH + 1];
-    bzero(zmq_endpoint, FRONTEND_DATA_LENGTH + 1);
-    read(connFd, zmq_endpoint, FRONTEND_DATA_LENGTH);
-    string zmq_endpoint_s(zmq_endpoint);
-    zmq_endpoint_s = Utils::trim_copy(zmq_endpoint_s);
-    string con_message = "Received the ZeroMQ endpoint: " + zmq_endpoint_s;
+    // Get the ZMQ port from the user
+    char zmq_port[FRONTEND_DATA_LENGTH + 1];
+    bzero(zmq_port, FRONTEND_DATA_LENGTH + 1);
+    read(connFd, zmq_port, FRONTEND_DATA_LENGTH);
+    string zmq_port_s(zmq_port);
+    zmq_port_s = Utils::trim_copy(zmq_port_s);
+    string zmq_endpoint_s = "tcp://*:" + zmq_port_s;
+    string con_message = "Binding ZMQ PULL socket on " + zmq_endpoint_s;
     int con_result_wr = write(connFd, con_message.c_str(), con_message.length());
     if (con_result_wr < 0) {
         frontend_logger.error("Error writing to socket");

@@ -4,6 +4,7 @@ services:
     ports:
       - '7777:7777'
       - '7778:7778'
+      - '5555:5555'
     volumes:
       - '/var/run/docker.sock:/var/run/docker.sock:rw'
       - './env/databases/metadb:/home/ubuntu/software/jasminegraph/metadb'

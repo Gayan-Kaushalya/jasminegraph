@@ -25,7 +25,12 @@ ZmqConnector::ZmqConnector(const std::string& endpoint)
     int linger = 0;
     socket.set(zmq::sockopt::linger, linger);
 
-    socket.connect(endpoint);
+    // Set receive high water mark for flow control
+    int rcvhwm = 100000;
+    socket.set(zmq::sockopt::rcvhwm, rcvhwm);
+
+    // BIND so JasmineGraph acts as the server (Python PUSH connects to us)
+    socket.bind(endpoint);
     connected = true;
 }
 
@@ -79,10 +84,11 @@ std::vector<std::string> ZmqConnector::receiveBatch(size_t maxMessages, int time
 void ZmqConnector::disconnect() {
     if (connected) {
         try {
-            socket.disconnect(endpoint);
+            socket.unbind(endpoint);
         } catch (...) {
-            // Ignore disconnect errors during cleanup
+            // Ignore unbind errors during cleanup
         }
         connected = false;
     }
 }
+
