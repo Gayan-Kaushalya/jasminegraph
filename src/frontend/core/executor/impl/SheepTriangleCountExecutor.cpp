@@ -12,8 +12,9 @@ limitations under the License.
  */
 
 #include "SheepTriangleCountExecutor.h"
-#include "TriangleCountExecutor.h"
 
+#include <netdb.h>
+#include <sys/socket.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -210,7 +211,7 @@ void SheepTriangleCountExecutor::execute() {
 
                 // Use the static method from TriangleCountExecutor to perform the actual work
                 intermRes.push_back(std::async(
-                    std::launch::async, TriangleCountExecutor::getTriangleCount, atoi(graphId.c_str()), host,
+                    std::launch::async, SheepTriangleCountExecutor::getSheepTriangleCount, atoi(graphId.c_str()), host,
                     workerPort, workerDataPort, atoi(partitionId.c_str()), masterIP, uniqueId,
                     isCompositeAggregation, threadPriority, fileCombinations, &combinationWorkerMap,
                     &triangleTree, &triangleTreeMutex, masterTraceContext));
@@ -295,7 +296,7 @@ void SheepTriangleCountExecutor::execute() {
 
         // Use the static aggregation method from TriangleCountExecutor
         long aggregatedTriangleCount =
-            TriangleCountExecutor::aggregateCentralStoreTriangles(sqlite, graphId, masterIP, threadPriority, partitionMap);
+            SheepTriangleCountExecutor::aggregateSheepCentralStoreTriangles(sqlite, graphId, masterIP, threadPriority, partitionMap);
         result += aggregatedTriangleCount;
 
         workerResponded = true;
@@ -353,18 +354,352 @@ void SheepTriangleCountExecutor::execute() {
     processStatusMutex.unlock();
 }
 
-// Delegate static methods to TriangleCountExecutor
+// Static helper: check if a file is accessible on a worker
+static string sheepIsFileAccessibleToWorker(std::string graphId, std::string partitionId,
+                                           std::string aggregatorHostName, std::string aggregatorPort,
+                                           std::string masterIP, std::string fileType, std::string fileName) {
+    int sockfd;
+    char data[INSTANCE_DATA_LENGTH + 1];
+    struct sockaddr_in serv_addr;
+    struct hostent *server;
+    string isFileAccessible = "false";
+
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0) {
+        sheepTriangleCount_logger.error("Cannot create socket");
+        return "false";
+    }
+
+    server = gethostbyname(aggregatorHostName.c_str());
+    if (server == NULL) {
+        sheepTriangleCount_logger.error("ERROR, no host named " + aggregatorHostName);
+        close(sockfd);
+        return "false";
+    }
+
+    bzero((char *)&serv_addr, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    bcopy((char *)server->h_addr, (char *)&serv_addr.sin_addr.s_addr, server->h_length);
+    serv_addr.sin_port = htons(atoi(aggregatorPort.c_str()));
+    if (Utils::connect_wrapper(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+        sheepTriangleCount_logger.error("ERROR connecting");
+        close(sockfd);
+        return "false";
+    }
+
+    int result_wr = write(sockfd, JasmineGraphInstanceProtocol::HANDSHAKE.c_str(),
+                          JasmineGraphInstanceProtocol::HANDSHAKE.size());
+    if (result_wr < 0) {
+        sheepTriangleCount_logger.log("Error writing to socket", "error");
+    }
+
+    string response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+    if (response.compare(JasmineGraphInstanceProtocol::HANDSHAKE_OK) == 0) {
+        result_wr = write(sockfd, masterIP.c_str(), masterIP.size());
+        if (result_wr < 0) {
+            sheepTriangleCount_logger.log("Error writing to socket", "error");
+        }
+
+        response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+        if (response.compare(JasmineGraphInstanceProtocol::HOST_OK) != 0) {
+            sheepTriangleCount_logger.log("Received : " + response, "error");
+        }
+
+        result_wr = write(sockfd, JasmineGraphInstanceProtocol::CHECK_FILE_ACCESSIBLE.c_str(),
+                          JasmineGraphInstanceProtocol::CHECK_FILE_ACCESSIBLE.size());
+        if (result_wr < 0) {
+            sheepTriangleCount_logger.log("Error writing to socket", "error");
+        }
+
+        response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+        if (response.compare(JasmineGraphInstanceProtocol::SEND_FILE_TYPE) == 0) {
+            result_wr = write(sockfd, fileType.c_str(), fileType.size());
+            if (result_wr < 0) {
+                sheepTriangleCount_logger.log("Error writing to socket", "error");
+            }
+
+            response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+            if (response.compare(JasmineGraphInstanceProtocol::SEND_FILE_NAME) == 0) {
+                if (fileType == JasmineGraphInstanceProtocol::FILE_TYPE_CENTRALSTORE_AGGREGATE) {
+                    std::string centralStoreFileName = graphId + "_centralstore_" + partitionId;
+                    result_wr = write(sockfd, centralStoreFileName.c_str(), centralStoreFileName.size());
+                } else {
+                    result_wr = write(sockfd, fileName.c_str(), fileName.size());
+                }
+                if (result_wr < 0) {
+                    sheepTriangleCount_logger.log("Error writing to socket", "error");
+                }
+
+                response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+                isFileAccessible = response;
+            }
+        }
+    }
+
+    Utils::send_str_wrapper(sockfd, JasmineGraphInstanceProtocol::CLOSE);
+    close(sockfd);
+    return isFileAccessible;
+}
+
+// Independent implementation: sends SHEEP_TRIANGLES protocol to workers
 long SheepTriangleCountExecutor::getSheepTriangleCount(
     int graphId, std::string host, int port, int dataPort, int partitionId, std::string masterIP, int uniqueId,
     bool isCompositeAggregation, int threadPriority, std::vector<std::vector<string>> fileCombinations,
     std::map<std::string, std::string> *combinationWorkerMap_p,
     std::unordered_map<long, std::unordered_map<long, std::unordered_set<long>>> *triangleTree_p,
     std::mutex *triangleTreeMutex_p, const std::string& masterTraceContext) {
-    
-    return TriangleCountExecutor::getTriangleCount(graphId, host, port, dataPort, partitionId, masterIP, uniqueId,
-                                                   isCompositeAggregation, threadPriority, fileCombinations,
-                                                   combinationWorkerMap_p, triangleTree_p, triangleTreeMutex_p,
-                                                   masterTraceContext);
+
+    int sockfd;
+    char data[INSTANCE_DATA_LENGTH + 1];
+    struct sockaddr_in serv_addr;
+    struct hostent *server;
+    long triangleCount = 0;
+    int result_wr;
+    string response;
+
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0) {
+        sheepTriangleCount_logger.error("Cannot create socket");
+        return 0;
+    }
+
+    if (host.find('@') != std::string::npos) {
+        host = Utils::split(host, '@')[1];
+    }
+
+    sheepTriangleCount_logger.log("###SHEEP-TRIANGLE-COUNT### Get Host By Name : " + host, "info");
+
+    server = gethostbyname(host.c_str());
+    if (server == NULL) {
+        sheepTriangleCount_logger.error("ERROR, no host named " + host);
+        return 0;
+    }
+
+    bzero((char *)&serv_addr, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    bcopy((char *)server->h_addr, (char *)&serv_addr.sin_addr.s_addr, server->h_length);
+    serv_addr.sin_port = htons(port);
+    if (Utils::connect_wrapper(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+        sheepTriangleCount_logger.error("ERROR connecting");
+        return 0;
+    }
+
+    // Protocol handshake
+    result_wr = write(sockfd, JasmineGraphInstanceProtocol::HANDSHAKE.c_str(),
+                      JasmineGraphInstanceProtocol::HANDSHAKE.size());
+    if (result_wr < 0) {
+        sheepTriangleCount_logger.log("Error writing to socket", "error");
+    }
+
+    sheepTriangleCount_logger.log("Sent : " + JasmineGraphInstanceProtocol::HANDSHAKE, "info");
+    response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+
+    if (response.compare(JasmineGraphInstanceProtocol::HANDSHAKE_OK) == 0) {
+        sheepTriangleCount_logger.log("Received : " + JasmineGraphInstanceProtocol::HANDSHAKE_OK, "info");
+        result_wr = write(sockfd, masterIP.c_str(), masterIP.size());
+        if (result_wr < 0) {
+            sheepTriangleCount_logger.log("Error writing to socket", "error");
+        }
+        sheepTriangleCount_logger.log("Sent : " + masterIP, "info");
+
+        response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+        if (response.compare(JasmineGraphInstanceProtocol::HOST_OK) == 0) {
+            sheepTriangleCount_logger.log("Received : " + JasmineGraphInstanceProtocol::HOST_OK, "info");
+        } else {
+            sheepTriangleCount_logger.log("Received : " + response, "error");
+        }
+
+        // Send SHEEP_TRIANGLES protocol command (NOT TRIANGLES)
+        result_wr = write(sockfd, JasmineGraphInstanceProtocol::SHEEP_TRIANGLES.c_str(),
+                          JasmineGraphInstanceProtocol::SHEEP_TRIANGLES.size());
+        if (result_wr < 0) {
+            sheepTriangleCount_logger.log("Error writing to socket", "error");
+        }
+        sheepTriangleCount_logger.log("Sent : " + JasmineGraphInstanceProtocol::SHEEP_TRIANGLES, "info");
+
+        response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+        if (response.compare(JasmineGraphInstanceProtocol::OK) == 0) {
+            sheepTriangleCount_logger.log("Received : " + JasmineGraphInstanceProtocol::OK, "info");
+            result_wr = write(sockfd, std::to_string(graphId).c_str(), std::to_string(graphId).size());
+            if (result_wr < 0) {
+                sheepTriangleCount_logger.log("Error writing to socket", "error");
+            }
+            sheepTriangleCount_logger.log("Sent : Graph ID " + std::to_string(graphId), "info");
+            response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+        }
+
+        if (response.compare(JasmineGraphInstanceProtocol::OK) == 0) {
+            sheepTriangleCount_logger.log("Received : " + JasmineGraphInstanceProtocol::OK, "info");
+            result_wr = write(sockfd, std::to_string(partitionId).c_str(), std::to_string(partitionId).size());
+            if (result_wr < 0) {
+                sheepTriangleCount_logger.log("Error writing to socket", "error");
+            }
+            sheepTriangleCount_logger.log("Sent : Partition ID " + std::to_string(partitionId), "info");
+            response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+        }
+
+        if (response.compare(JasmineGraphInstanceProtocol::OK) == 0) {
+            sheepTriangleCount_logger.log("Received : " + JasmineGraphInstanceProtocol::OK, "info");
+            result_wr = write(sockfd, std::to_string(threadPriority).c_str(), std::to_string(threadPriority).size());
+            if (result_wr < 0) {
+                sheepTriangleCount_logger.log("Error writing to socket", "error");
+            }
+            sheepTriangleCount_logger.log("Sent : Thread Priority " + std::to_string(threadPriority), "info");
+
+            response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+
+            // Send trace context for distributed tracing
+            if (response.compare(JasmineGraphInstanceProtocol::OK) == 0) {
+                sheepTriangleCount_logger.log("Received : " + JasmineGraphInstanceProtocol::OK, "info");
+
+                std::string traceContext = masterTraceContext;
+                if (traceContext.empty()) {
+                    traceContext = "NO_TRACE_CONTEXT";
+                }
+
+                result_wr = write(sockfd, traceContext.c_str(), traceContext.size());
+                if (result_wr < 0) {
+                    sheepTriangleCount_logger.log("Error writing trace context to socket", "error");
+                }
+
+                sheepTriangleCount_logger.log("Sent : Trace Context " + traceContext, "info");
+                response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+            }
+
+            sheepTriangleCount_logger.log("Got response : |" + response + "|", "info");
+            triangleCount = atol(response.c_str());
+        }
+
+        if (isCompositeAggregation) {
+            sheepTriangleCount_logger.log("###COMPOSITE### Started Composite aggregation ", "info");
+            for (int combinationIndex = 0; combinationIndex < fileCombinations.size(); ++combinationIndex) {
+                const std::vector<string> &fileList = fileCombinations.at(combinationIndex);
+                std::set<string> partitionIdSet;
+                std::set<string> partitionSet;
+                std::set<string> transferRequireFiles;
+                std::string combinationKey = "";
+                std::string availableFiles = "";
+                std::string transferredFiles = "";
+                bool isAggregateValid = false;
+
+                for (auto listIterator = fileList.begin(); listIterator != fileList.end(); ++listIterator) {
+                    std::string fileName = *listIterator;
+                    size_t lastIndex = fileName.find_last_of(".");
+                    string rawFileName = fileName.substr(0, lastIndex);
+                    const std::vector<std::string> &fileNameParts = Utils::split(rawFileName, '_');
+
+                    for (int index = 2; index < fileNameParts.size(); ++index) {
+                        partitionSet.insert(fileNameParts[index]);
+                    }
+                }
+
+                if (partitionSet.find(std::to_string(partitionId)) == partitionSet.end()) {
+                    continue;
+                }
+
+                for (auto fileListIterator = fileList.begin(); fileListIterator != fileList.end(); ++fileListIterator) {
+                    std::string fileName = *fileListIterator;
+                    bool isTransferRequired = true;
+
+                    combinationKey = fileName + ":" + combinationKey;
+
+                    size_t lastindex = fileName.find_last_of(".");
+                    string rawFileName = fileName.substr(0, lastindex);
+                    std::vector<std::string> fileNameParts = Utils::split(rawFileName, '_');
+
+                    for (int index = 2; index < fileNameParts.size(); ++index) {
+                        if (fileNameParts[index] == std::to_string(partitionId)) {
+                            isTransferRequired = false;
+                        }
+                        partitionIdSet.insert(fileNameParts[index]);
+                    }
+
+                    if (isTransferRequired) {
+                        transferRequireFiles.insert(fileName);
+                        transferredFiles = fileName + ":" + transferredFiles;
+                    } else {
+                        availableFiles = fileName + ":" + availableFiles;
+                    }
+                }
+
+                std::string adjustedAvailableFiles = availableFiles.substr(0, availableFiles.size() - 1);
+                std::string adjustedTransferredFile = transferredFiles.substr(0, transferredFiles.size() - 1);
+
+                fileCombinationMutex.lock();
+                std::map<std::string, std::string> &combinationWorkerMap = *combinationWorkerMap_p;
+                if (combinationWorkerMap.find(combinationKey) == combinationWorkerMap.end()) {
+                    if (partitionIdSet.find(std::to_string(partitionId)) != partitionIdSet.end()) {
+                        combinationWorkerMap[combinationKey] = std::to_string(partitionId);
+                        isAggregateValid = true;
+                    }
+                }
+                fileCombinationMutex.unlock();
+
+                if (isAggregateValid) {
+                    for (auto transferRequireFileIterator = transferRequireFiles.begin();
+                         transferRequireFileIterator != transferRequireFiles.end(); ++transferRequireFileIterator) {
+                        std::string transferFileName = *transferRequireFileIterator;
+                        std::string fileAccessible = sheepIsFileAccessibleToWorker(
+                            std::to_string(graphId), std::string(), host, std::to_string(port), masterIP,
+                            JasmineGraphInstanceProtocol::FILE_TYPE_CENTRALSTORE_COMPOSITE, transferFileName);
+
+                        if (fileAccessible.compare("false") == 0) {
+                            SheepTriangleCountExecutor::copyCompositeCentralStoreToAggregator(
+                                host, std::to_string(port), std::to_string(dataPort), transferFileName, masterIP);
+                        }
+                    }
+
+                    sheepTriangleCount_logger.log("###COMPOSITE### Retrieved Composite triangle list ", "debug");
+
+                    const auto &triangles = SheepTriangleCountExecutor::countCompositeCentralStoreTriangles(
+                        host, std::to_string(port), adjustedTransferredFile, masterIP, adjustedAvailableFiles,
+                        threadPriority);
+                    if (triangles.size() > 0) {
+                        // Inline triangle tree update
+                        std::mutex &triangleTreeMutex = *triangleTreeMutex_p;
+                        const std::lock_guard<std::mutex> lock1(triangleTreeMutex);
+                        auto &triangleTree = *triangleTree_p;
+
+                        for (auto triangleIterator = triangles.begin(); triangleIterator != triangles.end();
+                             ++triangleIterator) {
+                            std::string triangle = *triangleIterator;
+                            if (!triangle.empty() && triangle != "NILL") {
+                                std::vector<std::string> triangleVertexList = Utils::split(triangle, ',');
+                                long vertexOne = std::atol(triangleVertexList.at(0).c_str());
+                                long vertexTwo = std::atol(triangleVertexList.at(1).c_str());
+                                long vertexThree = std::atol(triangleVertexList.at(2).c_str());
+
+                                auto &itemRes = triangleTree[vertexOne];
+                                auto itemResIterator = itemRes.find(vertexTwo);
+                                if (itemResIterator != itemRes.end()) {
+                                    auto &set2 = itemResIterator->second;
+                                    if (set2.find(vertexThree) == set2.end()) {
+                                        set2.insert(vertexThree);
+                                        triangleCount++;
+                                    }
+                                } else {
+                                    triangleTree[vertexOne][vertexTwo].insert(vertexThree);
+                                    triangleCount++;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        sheepTriangleCount_logger.info("###COMPOSITE### Returning Total Sheep Triangles from executor ");
+        Utils::send_str_wrapper(sockfd, JasmineGraphInstanceProtocol::CLOSE);
+        close(sockfd);
+        return triangleCount;
+
+    } else {
+        sheepTriangleCount_logger.log("There was an error in the upload process and the response is :: " + response,
+                                     "error");
+    }
+    Utils::send_str_wrapper(sockfd, JasmineGraphInstanceProtocol::CLOSE);
+    close(sockfd);
+    return 0;
 }
 
 std::string SheepTriangleCountExecutor::copyCompositeCentralStoreToAggregator(std::string aggregatorHostName,
@@ -372,19 +707,215 @@ std::string SheepTriangleCountExecutor::copyCompositeCentralStoreToAggregator(st
                                                                               std::string aggregatorDataPort,
                                                                               std::string fileName,
                                                                               std::string masterIP) {
-    return TriangleCountExecutor::copyCompositeCentralStoreToAggregator(aggregatorHostName, aggregatorPort,
-                                                                        aggregatorDataPort, fileName, masterIP);
+    // Use same protocol as TriangleCountExecutor - this is generic file transfer infrastructure
+    int sockfd;
+    char data[INSTANCE_DATA_LENGTH + 1];
+    struct sockaddr_in serv_addr;
+    struct hostent *server;
+
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0) {
+        sheepTriangleCount_logger.error("Cannot create socket");
+        return "";
+    }
+
+    if (aggregatorHostName.find('@') != std::string::npos) {
+        aggregatorHostName = Utils::split(aggregatorHostName, '@')[1];
+    }
+
+    server = gethostbyname(aggregatorHostName.c_str());
+    if (server == NULL) {
+        sheepTriangleCount_logger.error("ERROR, no host named " + aggregatorHostName);
+        return "";
+    }
+
+    bzero((char *)&serv_addr, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    bcopy((char *)server->h_addr, (char *)&serv_addr.sin_addr.s_addr, server->h_length);
+    serv_addr.sin_port = htons(atoi(aggregatorPort.c_str()));
+    if (Utils::connect_wrapper(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+        sheepTriangleCount_logger.error("ERROR connecting");
+        return "";
+    }
+
+    int result_wr = write(sockfd, JasmineGraphInstanceProtocol::HANDSHAKE.c_str(),
+                          JasmineGraphInstanceProtocol::HANDSHAKE.size());
+    if (result_wr < 0) {
+        sheepTriangleCount_logger.log("Error writing to socket", "error");
+    }
+
+    string response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+    if (response.compare(JasmineGraphInstanceProtocol::HANDSHAKE_OK) == 0) {
+        result_wr = write(sockfd, masterIP.c_str(), masterIP.size());
+        if (result_wr < 0) {
+            sheepTriangleCount_logger.log("Error writing to socket", "error");
+        }
+
+        response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+        if (response.compare(JasmineGraphInstanceProtocol::HOST_OK) != 0) {
+            sheepTriangleCount_logger.log("Received : " + response, "error");
+        }
+
+        result_wr = write(sockfd, JasmineGraphInstanceProtocol::SEND_COMPOSITE_CENTRALSTORE_TO_AGGREGATOR.c_str(),
+                          JasmineGraphInstanceProtocol::SEND_COMPOSITE_CENTRALSTORE_TO_AGGREGATOR.size());
+        if (result_wr < 0) {
+            sheepTriangleCount_logger.log("Error writing to socket", "error");
+        }
+
+        response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+        if (response.compare(JasmineGraphInstanceProtocol::SEND_FILE_NAME) == 0) {
+            result_wr = write(sockfd, fileName.c_str(), fileName.size());
+            if (result_wr < 0) {
+                sheepTriangleCount_logger.log("Error writing to socket", "error");
+            }
+
+            response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+            if (response.compare(JasmineGraphInstanceProtocol::SEND_FILE_LEN) == 0) {
+                sheepTriangleCount_logger.log("Received : " + JasmineGraphInstanceProtocol::SEND_FILE_LEN, "info");
+                std::string instanceDataFolderLocation =
+                    Utils::getJasmineGraphProperty("org.jasminegraph.server.instance.datafolder");
+                std::string aggregateStoreFileName = instanceDataFolderLocation + "/" + fileName;
+
+                std::ifstream file(aggregateStoreFileName, std::ios::binary | std::ios::ate);
+                int fileSize = file.tellg();
+                file.close();
+
+                result_wr =
+                    write(sockfd, std::to_string(fileSize).c_str(), std::to_string(fileSize).size());
+                if (result_wr < 0) {
+                    sheepTriangleCount_logger.log("Error writing to socket", "error");
+                }
+
+                response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+                if (response.compare(JasmineGraphInstanceProtocol::SEND_FILE_CONT) == 0) {
+                    sheepTriangleCount_logger.log("Received : " + JasmineGraphInstanceProtocol::SEND_FILE_CONT,
+                                                 "info");
+                    sheepTriangleCount_logger.log("Going to send file: " + aggregateStoreFileName, "info");
+                    Utils::sendFileThroughService(aggregatorHostName, atoi(aggregatorDataPort.c_str()),
+                                                 fileName, aggregateStoreFileName);
+                }
+            }
+
+            int count = 0;
+            while (true) {
+                result_wr = write(sockfd, JasmineGraphInstanceProtocol::FILE_RECV_CHK.c_str(),
+                                  JasmineGraphInstanceProtocol::FILE_RECV_CHK.size());
+                if (result_wr < 0) {
+                    sheepTriangleCount_logger.log("Error writing to socket", "error");
+                }
+
+                response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+                if (response.compare(JasmineGraphInstanceProtocol::FILE_RECV_WAIT) == 0) {
+                    sheepTriangleCount_logger.log("Received : " + JasmineGraphInstanceProtocol::FILE_RECV_WAIT,
+                                                 "info");
+                    sleep(1);
+                    count++;
+                    if (count >= 10) {
+                        break;
+                    }
+                } else if (response.compare(JasmineGraphInstanceProtocol::FILE_ACK) == 0) {
+                    sheepTriangleCount_logger.log("Received : " + JasmineGraphInstanceProtocol::FILE_ACK, "info");
+                    break;
+                }
+            }
+        }
+    }
+
+    Utils::send_str_wrapper(sockfd, JasmineGraphInstanceProtocol::CLOSE);
+    close(sockfd);
+    return response;
 }
 
-std::vector<string> SheepTriangleCountExecutor::countCompositeCentralStoreTriangles(std::string aggregatorHostName,
-                                                                                    std::string aggregatorPort,
-                                                                                    std::string compositeCentralStoreFileList,
-                                                                                    std::string masterIP,
-                                                                                    std::string availableFileList,
-                                                                                    int threadPriority) {
-    return TriangleCountExecutor::countCompositeCentralStoreTriangles(aggregatorHostName, aggregatorPort,
-                                                                      compositeCentralStoreFileList, masterIP,
-                                                                      availableFileList, threadPriority);
+std::vector<string> SheepTriangleCountExecutor::countCompositeCentralStoreTriangles(
+    std::string aggregatorHostName, std::string aggregatorPort, std::string compositeCentralStoreFileList,
+    std::string masterIP, std::string availableFileList, int threadPriority) {
+    int sockfd;
+    char data[INSTANCE_DATA_LENGTH + 1];
+    struct sockaddr_in serv_addr;
+    struct hostent *server;
+    std::vector<string> triangleList;
+
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0) {
+        sheepTriangleCount_logger.error("Cannot create socket");
+        return triangleList;
+    }
+
+    if (aggregatorHostName.find('@') != std::string::npos) {
+        aggregatorHostName = Utils::split(aggregatorHostName, '@')[1];
+    }
+
+    server = gethostbyname(aggregatorHostName.c_str());
+    if (server == NULL) {
+        sheepTriangleCount_logger.error("ERROR, no host named " + aggregatorHostName);
+        return triangleList;
+    }
+
+    bzero((char *)&serv_addr, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    bcopy((char *)server->h_addr, (char *)&serv_addr.sin_addr.s_addr, server->h_length);
+    serv_addr.sin_port = htons(atoi(aggregatorPort.c_str()));
+    if (Utils::connect_wrapper(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+        sheepTriangleCount_logger.error("ERROR connecting");
+        return triangleList;
+    }
+
+    int result_wr = write(sockfd, JasmineGraphInstanceProtocol::HANDSHAKE.c_str(),
+                          JasmineGraphInstanceProtocol::HANDSHAKE.size());
+    if (result_wr < 0) {
+        sheepTriangleCount_logger.log("Error writing to socket", "error");
+    }
+
+    string response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+    if (response.compare(JasmineGraphInstanceProtocol::HANDSHAKE_OK) == 0) {
+        result_wr = write(sockfd, masterIP.c_str(), masterIP.size());
+        if (result_wr < 0) {
+            sheepTriangleCount_logger.log("Error writing to socket", "error");
+        }
+
+        response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+        if (response.compare(JasmineGraphInstanceProtocol::HOST_OK) != 0) {
+            sheepTriangleCount_logger.log("Received : " + response, "error");
+        }
+
+        result_wr = write(sockfd, JasmineGraphInstanceProtocol::AGGREGATE_COMPOSITE_CENTRALSTORE_TRIANGLES.c_str(),
+                          JasmineGraphInstanceProtocol::AGGREGATE_COMPOSITE_CENTRALSTORE_TRIANGLES.size());
+        if (result_wr < 0) {
+            sheepTriangleCount_logger.log("Error writing to socket", "error");
+        }
+
+        response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+        if (response.compare(JasmineGraphInstanceProtocol::OK) == 0) {
+            result_wr = write(sockfd, compositeCentralStoreFileList.c_str(), compositeCentralStoreFileList.size());
+            if (result_wr < 0) {
+                sheepTriangleCount_logger.log("Error writing to socket", "error");
+            }
+
+            response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+            if (response.compare(JasmineGraphInstanceProtocol::OK) == 0) {
+                result_wr = write(sockfd, availableFileList.c_str(), availableFileList.size());
+                if (result_wr < 0) {
+                    sheepTriangleCount_logger.log("Error writing to socket", "error");
+                }
+
+                response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+                if (response.compare(JasmineGraphInstanceProtocol::OK) == 0) {
+                    result_wr = write(sockfd, std::to_string(threadPriority).c_str(),
+                                     std::to_string(threadPriority).size());
+                    if (result_wr < 0) {
+                        sheepTriangleCount_logger.log("Error writing to socket", "error");
+                    }
+
+                    response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+                    triangleList = Utils::split(response, ':');
+                }
+            }
+        }
+    }
+
+    Utils::send_str_wrapper(sockfd, JasmineGraphInstanceProtocol::CLOSE);
+    close(sockfd);
+    return triangleList;
 }
 
 std::string SheepTriangleCountExecutor::copyCentralStoreToAggregator(std::string aggregatorHostName,
@@ -393,6 +924,343 @@ std::string SheepTriangleCountExecutor::copyCentralStoreToAggregator(std::string
                                                                      int graphId,
                                                                      int partitionId,
                                                                      std::string masterIP) {
-    return TriangleCountExecutor::copyCentralStoreToAggregator(aggregatorHostName, aggregatorPort,
-                                                               aggregatorDataPort, graphId, partitionId, masterIP);
+    int sockfd;
+    char data[INSTANCE_DATA_LENGTH + 1];
+    struct sockaddr_in serv_addr;
+    struct hostent *server;
+
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0) {
+        sheepTriangleCount_logger.error("Cannot create socket");
+        return "";
+    }
+
+    if (aggregatorHostName.find('@') != std::string::npos) {
+        aggregatorHostName = Utils::split(aggregatorHostName, '@')[1];
+    }
+
+    server = gethostbyname(aggregatorHostName.c_str());
+    if (server == NULL) {
+        sheepTriangleCount_logger.error("ERROR, no host named " + aggregatorHostName);
+        return "";
+    }
+
+    bzero((char *)&serv_addr, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    bcopy((char *)server->h_addr, (char *)&serv_addr.sin_addr.s_addr, server->h_length);
+    serv_addr.sin_port = htons(atoi(aggregatorPort.c_str()));
+    if (Utils::connect_wrapper(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+        sheepTriangleCount_logger.error("ERROR connecting");
+        return "";
+    }
+
+    int result_wr = write(sockfd, JasmineGraphInstanceProtocol::HANDSHAKE.c_str(),
+                          JasmineGraphInstanceProtocol::HANDSHAKE.size());
+    if (result_wr < 0) {
+        sheepTriangleCount_logger.log("Error writing to socket", "error");
+    }
+
+    string response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+    if (response.compare(JasmineGraphInstanceProtocol::HANDSHAKE_OK) == 0) {
+        result_wr = write(sockfd, masterIP.c_str(), masterIP.size());
+        if (result_wr < 0) {
+            sheepTriangleCount_logger.log("Error writing to socket", "error");
+        }
+
+        response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+        if (response.compare(JasmineGraphInstanceProtocol::HOST_OK) != 0) {
+            sheepTriangleCount_logger.log("Received : " + response, "error");
+        }
+
+        result_wr = write(sockfd, JasmineGraphInstanceProtocol::SEND_CENTRALSTORE_TO_AGGREGATOR.c_str(),
+                          JasmineGraphInstanceProtocol::SEND_CENTRALSTORE_TO_AGGREGATOR.size());
+        if (result_wr < 0) {
+            sheepTriangleCount_logger.log("Error writing to socket", "error");
+        }
+
+        response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+        if (response.compare(JasmineGraphInstanceProtocol::SEND_FILE_NAME) == 0) {
+            std::string centralStoreFileName =
+                std::to_string(graphId) + "_centralstore_" + std::to_string(partitionId);
+            result_wr = write(sockfd, centralStoreFileName.c_str(), centralStoreFileName.size());
+            if (result_wr < 0) {
+                sheepTriangleCount_logger.log("Error writing to socket", "error");
+            }
+
+            response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+            if (response.compare(JasmineGraphInstanceProtocol::SEND_FILE_LEN) == 0) {
+                std::string instanceDataFolderLocation =
+                    Utils::getJasmineGraphProperty("org.jasminegraph.server.instance.datafolder");
+                std::string aggregateStoreFileName =
+                    instanceDataFolderLocation + "/" + centralStoreFileName + ".gz";
+
+                std::ifstream file(aggregateStoreFileName, std::ios::binary | std::ios::ate);
+                int fileSize = file.tellg();
+                file.close();
+
+                result_wr = write(sockfd, std::to_string(fileSize).c_str(), std::to_string(fileSize).size());
+                if (result_wr < 0) {
+                    sheepTriangleCount_logger.log("Error writing to socket", "error");
+                }
+
+                response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+                if (response.compare(JasmineGraphInstanceProtocol::SEND_FILE_CONT) == 0) {
+                    sheepTriangleCount_logger.log("Going to send file: " + aggregateStoreFileName, "info");
+                    Utils::sendFileThroughService(aggregatorHostName, atoi(aggregatorDataPort.c_str()),
+                                                 centralStoreFileName + ".gz", aggregateStoreFileName);
+                }
+            }
+
+            int count = 0;
+            while (true) {
+                result_wr = write(sockfd, JasmineGraphInstanceProtocol::FILE_RECV_CHK.c_str(),
+                                  JasmineGraphInstanceProtocol::FILE_RECV_CHK.size());
+                if (result_wr < 0) {
+                    sheepTriangleCount_logger.log("Error writing to socket", "error");
+                }
+
+                response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+                if (response.compare(JasmineGraphInstanceProtocol::FILE_RECV_WAIT) == 0) {
+                    sleep(1);
+                    count++;
+                    if (count >= 10) {
+                        break;
+                    }
+                } else if (response.compare(JasmineGraphInstanceProtocol::FILE_ACK) == 0) {
+                    break;
+                }
+            }
+        }
+    }
+
+    Utils::send_str_wrapper(sockfd, JasmineGraphInstanceProtocol::CLOSE);
+    close(sockfd);
+    return response;
+}
+
+// Independent aggregation of central store triangles for sheep-partitioned graphs
+long SheepTriangleCountExecutor::aggregateSheepCentralStoreTriangles(
+    SQLiteDBInterface *sqlite, std::string graphId, std::string masterIP, int threadPriority,
+    const std::map<string, std::vector<string>> &partitionMap) {
+    OTEL_TRACE_FUNCTION();
+
+    vector<string> partitionsVector;
+    std::map<string, string> partitionWorkerMap;  // partition_id => worker_id
+    for (auto it = partitionMap.begin(); it != partitionMap.end(); it++) {
+        const auto &parts = it->second;
+        string worker = it->first;
+        for (auto partsIt = parts.begin(); partsIt != parts.end(); partsIt++) {
+            string partition = *partsIt;
+            partitionWorkerMap[partition] = worker;
+            partitionsVector.push_back(partition);
+        }
+    }
+
+    const std::vector<std::vector<string>> &partitionCombinations = AbstractExecutor::getCombinations(partitionsVector);
+    std::map<string, int> workerWeightMap;
+    std::vector<std::future<string>> triangleCountResponse;
+    std::string result = "";
+    long aggregatedTriangleCount = 0;
+
+    const std::vector<vector<pair<string, string>>> &workerDataResult =
+        sqlite->runSelect("SELECT DISTINCT idworker,ip,server_port,server_data_port FROM worker;");
+    map<string, vector<string>> workerDataMap;  // worker_id => [ip,port,data_port]
+    for (auto it = workerDataResult.begin(); it != workerDataResult.end(); it++) {
+        const auto &ipPortDport = *it;
+        string id = ipPortDport[0].second;
+        string ip = ipPortDport[1].second;
+        string port = ipPortDport[2].second;
+        string dport = ipPortDport[3].second;
+        workerDataMap[id] = {ip, port, dport};
+    }
+
+    for (auto partitonCombinationsIterator = partitionCombinations.begin();
+         partitonCombinationsIterator != partitionCombinations.end(); partitonCombinationsIterator++) {
+        const std::vector<string> &partitionCombination = *partitonCombinationsIterator;
+        std::vector<std::future<string>> remoteGraphCopyResponse;
+        int minimumWeight = 0;
+        std::string minWeightWorker;
+        std::string minWeightWorkerPartition;
+
+        for (auto partCombinationIterator = partitionCombination.begin();
+             partCombinationIterator != partitionCombination.end(); partCombinationIterator++) {
+            string part = *partCombinationIterator;
+            string workerId = partitionWorkerMap[part];
+            auto workerWeightMapIterator = workerWeightMap.find(workerId);
+            if (workerWeightMapIterator != workerWeightMap.end()) {
+                int weight = workerWeightMapIterator->second;
+                if (minimumWeight == 0 || minimumWeight > weight) {
+                    minimumWeight = weight + 1;
+                    minWeightWorker = workerId;
+                    minWeightWorkerPartition = part;
+                }
+            } else {
+                minimumWeight = 1;
+                minWeightWorker = workerId;
+                minWeightWorkerPartition = part;
+            }
+        }
+        workerWeightMap[minWeightWorker] = minimumWeight;
+
+        const auto &workerData = workerDataMap[minWeightWorker];
+        std::string aggregatorIp = workerData[0];
+        std::string aggregatorPort = workerData[1];
+        std::string aggregatorDataPort = workerData[2];
+
+        std::string aggregatorPartitionId = minWeightWorkerPartition;
+
+        std::string partitionIdList = "";
+        for (auto partitionCombinationIterator = partitionCombination.begin();
+             partitionCombinationIterator != partitionCombination.end(); ++partitionCombinationIterator) {
+            string part = *partitionCombinationIterator;
+
+            if (part != minWeightWorkerPartition) {
+                partitionIdList += part + ",";
+            }
+            if (partitionWorkerMap[part] != minWeightWorker) {
+                std::string centralStoreAvailable = sheepIsFileAccessibleToWorker(
+                    graphId, part, aggregatorIp, aggregatorPort, masterIP,
+                    JasmineGraphInstanceProtocol::FILE_TYPE_CENTRALSTORE_AGGREGATE, std::string());
+
+                if (centralStoreAvailable.compare("false") == 0) {
+                    remoteGraphCopyResponse.push_back(std::async(
+                        std::launch::async, SheepTriangleCountExecutor::copyCentralStoreToAggregator, aggregatorIp,
+                        aggregatorPort, aggregatorDataPort, atoi(graphId.c_str()), atoi(part.c_str()), masterIP));
+                }
+            }
+        }
+
+        for (auto &&futureCallCopy : remoteGraphCopyResponse) {
+            futureCallCopy.get();
+        }
+
+        std::string adjustedPartitionIdList = partitionIdList.substr(0, partitionIdList.size() - 1);
+
+        std::string currentTraceContext = OpenTelemetryUtil::getCurrentTraceContext();
+
+        triangleCountResponse.push_back(std::async(
+            std::launch::async, SheepTriangleCountExecutor::countSheepCentralStoreTriangles, aggregatorPort,
+            aggregatorIp, aggregatorPartitionId, adjustedPartitionIdList, graphId, masterIP, threadPriority,
+            currentTraceContext));
+    }
+
+    for (auto &&futureCall : triangleCountResponse) {
+        result = result + ":" + futureCall.get();
+    }
+
+    const std::vector<std::string> &triangles = Utils::split(result, ':');
+    std::set<std::string> uniqueTriangleSet;
+    for (auto triangleIterator = triangles.begin(); triangleIterator != triangles.end(); ++triangleIterator) {
+        std::string triangle = *triangleIterator;
+        if (!triangle.empty() && triangle != "NILL") {
+            uniqueTriangleSet.insert(triangle);
+        }
+    }
+
+    aggregatedTriangleCount = uniqueTriangleSet.size();
+    uniqueTriangleSet.clear();
+
+    return aggregatedTriangleCount;
+}
+
+// Independent central store triangle counting
+string SheepTriangleCountExecutor::countSheepCentralStoreTriangles(
+    std::string aggregatorPort, std::string host, std::string partitionId, std::string partitionIdList,
+    std::string graphId, std::string masterIP, int threadPriority, std::string traceContext) {
+    int sockfd;
+    char data[INSTANCE_DATA_LENGTH + 1];
+    struct sockaddr_in serv_addr;
+    struct hostent *server;
+
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0) {
+        sheepTriangleCount_logger.error("Cannot create socket");
+        return "";
+    }
+
+    if (host.find('@') != std::string::npos) {
+        host = Utils::split(host, '@')[1];
+    }
+
+    server = gethostbyname(host.c_str());
+    if (server == NULL) {
+        sheepTriangleCount_logger.error("ERROR, no host named " + host);
+        return "";
+    }
+
+    bzero((char *)&serv_addr, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    bcopy((char *)server->h_addr, (char *)&serv_addr.sin_addr.s_addr, server->h_length);
+    serv_addr.sin_port = htons(atoi(aggregatorPort.c_str()));
+    if (Utils::connect_wrapper(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+        sheepTriangleCount_logger.error("ERROR connecting");
+        return "";
+    }
+
+    int result_wr = write(sockfd, JasmineGraphInstanceProtocol::HANDSHAKE.c_str(),
+                          JasmineGraphInstanceProtocol::HANDSHAKE.size());
+    if (result_wr < 0) {
+        sheepTriangleCount_logger.log("Error writing to socket", "error");
+    }
+
+    string response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+    string result = "";
+
+    if (response.compare(JasmineGraphInstanceProtocol::HANDSHAKE_OK) == 0) {
+        result_wr = write(sockfd, masterIP.c_str(), masterIP.size());
+        if (result_wr < 0) {
+            sheepTriangleCount_logger.log("Error writing to socket", "error");
+        }
+
+        response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+        if (response.compare(JasmineGraphInstanceProtocol::HOST_OK) != 0) {
+            sheepTriangleCount_logger.log("Received : " + response, "error");
+        }
+
+        result_wr = write(sockfd, JasmineGraphInstanceProtocol::AGGREGATE_CENTRALSTORE_TRIANGLES.c_str(),
+                          JasmineGraphInstanceProtocol::AGGREGATE_CENTRALSTORE_TRIANGLES.size());
+        if (result_wr < 0) {
+            sheepTriangleCount_logger.log("Error writing to socket", "error");
+        }
+
+        response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+        if (response.compare(JasmineGraphInstanceProtocol::OK) == 0) {
+            result_wr = write(sockfd, graphId.c_str(), graphId.size());
+            if (result_wr < 0) {
+                sheepTriangleCount_logger.log("Error writing to socket", "error");
+            }
+
+            response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+            if (response.compare(JasmineGraphInstanceProtocol::OK) == 0) {
+                result_wr = write(sockfd, partitionId.c_str(), partitionId.size());
+                if (result_wr < 0) {
+                    sheepTriangleCount_logger.log("Error writing to socket", "error");
+                }
+
+                response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+                if (response.compare(JasmineGraphInstanceProtocol::OK) == 0) {
+                    result_wr = write(sockfd, partitionIdList.c_str(), partitionIdList.size());
+                    if (result_wr < 0) {
+                        sheepTriangleCount_logger.log("Error writing to socket", "error");
+                    }
+
+                    response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+                    if (response.compare(JasmineGraphInstanceProtocol::OK) == 0) {
+                        result_wr = write(sockfd, std::to_string(threadPriority).c_str(),
+                                         std::to_string(threadPriority).size());
+                        if (result_wr < 0) {
+                            sheepTriangleCount_logger.log("Error writing to socket", "error");
+                        }
+
+                        response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+                        result = response;
+                    }
+                }
+            }
+        }
+    }
+
+    Utils::send_str_wrapper(sockfd, JasmineGraphInstanceProtocol::CLOSE);
+    close(sockfd);
+    return result;
 }

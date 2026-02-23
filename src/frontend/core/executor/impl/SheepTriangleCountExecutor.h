@@ -63,6 +63,15 @@ class SheepTriangleCountExecutor : public AbstractExecutor {
                                                     std::string aggregatorDataPort, int graphId, int partitionId,
                                                     std::string masterIP);
 
+    static long aggregateSheepCentralStoreTriangles(SQLiteDBInterface *sqlite, std::string graphId,
+                                                    std::string masterIP, int threadPriority,
+                                                    const std::map<std::string, std::vector<std::string>> &partitionMap);
+
+    static std::string countSheepCentralStoreTriangles(std::string aggregatorPort, std::string host,
+                                                       std::string partitionId, std::string partitionIdList,
+                                                       std::string graphId, std::string masterIP,
+                                                       int threadPriority, std::string traceContext);
+
  private:
     SQLiteDBInterface *sqlite;
     PerformanceSQLiteDBInterface *perfDB;
