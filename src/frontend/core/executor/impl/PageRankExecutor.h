@@ -27,7 +27,7 @@ class PageRankExecutor : public AbstractExecutor{
 
     PageRankExecutor(SQLiteDBInterface *db, PerformanceSQLiteDBInterface *perfDb, JobRequest jobRequest);
     static void doPageRank(std::string graphID, double alpha, int iterations, string partition,
-                          string host, int port, int dataPort, std::string workerList);
+                           string host, int port, int dataPort, std::string workerList, int partitionCount);
     void execute();
     int getUid();
 

@@ -102,6 +102,11 @@ void PageRankExecutor::execute() {
     workerList.pop_back();
     pageRank_logger.info("Worker list " + workerList);
 
+    int partitionCount = 0;
+    for (auto workerIter = graphPartitionedHosts.begin(); workerIter != graphPartitionedHosts.end(); workerIter++) {
+        partitionCount += workerIter->second.partitionID.size();
+    }
+
     for (auto workerIter = graphPartitionedHosts.begin(); workerIter != graphPartitionedHosts.end(); workerIter++) {
         JasmineGraphServer::workerPartitions workerPartition = workerIter->second;
         host = workerIter->first;
@@ -112,7 +117,7 @@ void PageRankExecutor::execute() {
              partitionIterator != workerPartition.partitionID.end(); partitionIterator++) {
             std::string partition = *partitionIterator;
             intermRes.push_back(std::async(std::launch::async, PageRankExecutor::doPageRank, graphId, alpha, iterations,
-                                           partition, host, port, dataPort, workerList));
+                                           partition, host, port, dataPort, workerList, partitionCount));
         }
     }
 
@@ -189,7 +194,7 @@ int PageRankExecutor::getUid() {
 }
 
 void PageRankExecutor::doPageRank(std::string graphID, double alpha, int iterations, string partition, string host,
-                                  int port, int dataPort, std::string workerList) {
+                                  int port, int dataPort, std::string workerList, int partitionCount) {
     if (host.find('@') != std::string::npos) {
         host = Utils::split(host, '@')[1];
     }
@@ -316,5 +321,25 @@ void PageRankExecutor::doPageRank(std::string graphID, double alpha, int iterati
         return;
     }
 
-    return;
+    if (!Utils::send_str_wrapper(sockfd, std::to_string(partitionCount))) {
+        pageRank_logger.error("Error writing to socket");
+        return;
+    }
+    pageRank_logger.info("Total partition count sent : " + std::to_string(partitionCount));
+
+    response = Utils::read_str_trim_wrapper(sockfd, data, FRONTEND_DATA_LENGTH);
+    if (response.compare(JasmineGraphInstanceProtocol::OK) == 0) {
+        pageRank_logger.info("Received : " + JasmineGraphInstanceProtocol::OK);
+    } else {
+        pageRank_logger.error("Error reading from socket");
+        return;
+    }
+
+    Utils::send_str_wrapper(sockfd, JasmineGraphInstanceProtocol::CLOSE);
+    close(sockfd);
 }
+
+int PageRankExecutor::getUid() {
+    return AbstractExecutor::getUid();
+}
+

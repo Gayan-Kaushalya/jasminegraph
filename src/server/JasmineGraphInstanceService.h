@@ -83,8 +83,10 @@ void calculateEgoNet(string graphID, string partitionID, int serverPort, Jasmine
 map<long, double> calculateLocalPageRank(string graphID, double alpha, string partitionID, int serverPort,
                                          int top_k_page_rank_value, string graphVertexCount,
                                          JasmineGraphHashMapLocalStore localDB,
-                                         JasmineGraphHashMapCentralStore centralDB, std::vector<string> &workerSockets,
-                                         int iterations);
+                                         JasmineGraphHashMapCentralStore centralDB,
+                                         JasmineGraphHashMapDuplicateCentralStore duplicateCentralDB,
+                                         std::vector<string> &workerSockets,
+                                         int iterations, int partitionCount);
 
 map<long, double> getAuthorityScoresWorldToLocal(string graphID, string partitionID, int serverPort,
                                                  string graphVertexCount, JasmineGraphHashMapLocalStore localDB,

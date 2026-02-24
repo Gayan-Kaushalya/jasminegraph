@@ -1663,12 +1663,15 @@ void calculateEgoNet(string graphID, string partitionID, int serverPort, Jasmine
 map<long, double> calculateLocalPageRank(string graphID, double alpha, string partitionID, int serverPort,
                                          int top_k_page_rank_value, string graphVertexCount,
                                          JasmineGraphHashMapLocalStore localDB,
-                                         JasmineGraphHashMapCentralStore centralDB, std::vector<string> &workerSockets,
-                                         int iterations) {
+                                         JasmineGraphHashMapCentralStore centralDB,
+                                         JasmineGraphHashMapDuplicateCentralStore duplicateCentralDB,
+                                         std::vector<string> &workerSockets,
+                                         int iterations, int partitionCount) {
     auto t_start = std::chrono::high_resolution_clock::now();
 
     map<long, unordered_set<long>> centralGraphMap = centralDB.getUnderlyingHashMap();
     map<long, unordered_set<long>> localGraphMap = localDB.getUnderlyingHashMap();
+    map<long, unordered_set<long>> duplicateGraphMap = duplicateCentralDB.getUnderlyingHashMap();
     map<long, unordered_set<long>>::iterator localGraphMapIterator;
     map<long, unordered_set<long>>::iterator centralGraphMapIterator;
 
@@ -1682,6 +1685,15 @@ map<long, double> calculateLocalPageRank(string graphID, double alpha, string pa
             if (localGraphMap.find(*itr) == localGraphMap.end()) {
                 unordered_set<long> valueSet;
                 localGraphMap[*itr] = valueSet;
+            }
+        }
+    }
+
+    // Include targets of duplicate central store edges (incoming edges from remote nodes)
+    for (const auto &entry : duplicateGraphMap) {
+        for (long neighbor : entry.second) {
+            if (localGraphMap.find(neighbor) == localGraphMap.end()) {
+                localGraphMap[neighbor] = {};
             }
         }
     }
@@ -1715,34 +1727,50 @@ map<long, double> calculateLocalPageRank(string graphID, double alpha, string pa
 
     std::string dataDirPath = Utils::getJasmineGraphProperty("org.jasminegraph.server.instance.datafolder");
 
-    std::string partitionCount = Utils::getJasmineGraphProperty("org.jasminegraph.server.npartitions");
-    int parCount = std::stoi(partitionCount);
+    int parCount = partitionCount;
 
-    for (int partitionID = 0; partitionID < parCount; ++partitionID) {
-        std::string iddFilePath = dataDirPath + "/" + graphID + "_idd_" + std::to_string(partitionID);
+    for (int pIdx = 0; pIdx < parCount; ++pIdx) {
+        std::string iddFilePath = dataDirPath + "/" + graphID + "_idd_" + std::to_string(pIdx);
         std::ifstream dataFile;
         dataFile.open(iddFilePath);
 
-        while (!dataFile.eof()) {
-            std::string line;
-            std::getline(dataFile, line);
-            std::stringstream buffer(line);
-            std::string temp;
-            std::vector<long> values;
+        if (dataFile.is_open()) {
+            while (!dataFile.eof()) {
+                std::string line;
+                std::getline(dataFile, line);
+                if (line.empty()) continue;
+                std::stringstream buffer(line);
+                std::string temp;
+                std::vector<long> values;
 
-            while (getline(buffer, temp, '\t')) {
-                values.push_back(::strtod(temp.c_str(), nullptr));
+                while (getline(buffer, temp, '\t')) {
+                    values.push_back(::strtod(temp.c_str(), nullptr));
+                }
+
+                if (values.size() == 2) {
+                    long nodeID = values[0];
+                    long iddValue = values[1];
+
+                    inDegreeDistribution[nodeID] = std::max(inDegreeDistribution[nodeID], iddValue);
+                }
             }
+            dataFile.close();
+        }
+    }
 
-            if (values.size() == 2) {
-                long nodeID = values[0];
-                long iddValue = values[1];
-
-                inDegreeDistribution[nodeID] = std::max(inDegreeDistribution[nodeID], iddValue);
+    // If idd files are missing or incomplete, calculate from local/duplicate stores
+    if (inDegreeDistribution.empty()) {
+        for (const auto &entry : localGraphMap) {
+            for (long neighbor : entry.second) {
+                inDegreeDistribution[neighbor]++;
             }
         }
-
-        dataFile.close();
+        for (const auto &entry : duplicateGraphMap) {
+            for (long neighbor : entry.second) {
+                inDegreeDistribution[neighbor]++;
+            }
+        }
+        instance_logger.info("In-degree distribution calculated from local/duplicate stores as idd files were missing.");
     }
 
     string instanceDataFolderLocation = Utils::getJasmineGraphProperty("org.jasminegraph.server.instance.datafolder");
@@ -1767,12 +1795,15 @@ map<long, double> calculateLocalPageRank(string graphID, double alpha, string pa
 
     int count = 0;
     while (count < iterations) {
+        // We iterate over nodes that have outgoing edges in THIS partition
+        // (local nodes)
         for (localGraphMapIterator = localGraphMap.begin(); localGraphMapIterator != localGraphMap.end();
              ++localGraphMapIterator) {
             long startVid = localGraphMapIterator->first;
-            unordered_set<long> endVidSet = localGraphMapIterator->second;
-            double existingParentRank = 1;
-
+            unordered_set<long> localNeighbors = localGraphMapIterator->second;
+            unordered_set<long> centralNeighbors = centralGraphMap[startVid];
+            
+            double existingParentRank = 1.0;
             auto rankMapItr = rankMap.find(startVid);
             if (rankMapItr != rankMap.end()) {
                 existingParentRank = rankMapItr->second;
@@ -1780,26 +1811,20 @@ map<long, double> calculateLocalPageRank(string graphID, double alpha, string pa
                 rankMap[startVid] = existingParentRank;
             }
 
-            long degree = endVidSet.size();
-            double distributedRank = alpha * (existingParentRank / degree) + mu;
+            long totalOutDegree = localNeighbors.size() + centralNeighbors.size();
+            if (totalOutDegree == 0) continue;
 
-            for (long itr : endVidSet) {
-                auto rankMapItr = rankMap.find(itr);
+            double distributedRank = alpha * (existingParentRank / totalOutDegree) + mu;
 
-                double existingChildRank = 0;
-                double finalRank = 0;
-                if (rankMapItr != rankMap.end()) {
-                    existingChildRank = rankMapItr->second;
-                    finalRank = existingChildRank + distributedRank;
-
-                    rankMapItr->second = finalRank;
-                } else {
-                    finalRank = existingChildRank + distributedRank;
-                    rankMap[itr] = finalRank;
-                }
+            // Push to local neighbors
+            for (long itr : localNeighbors) {
+                rankMap[itr] += distributedRank;
+            }
+            // Push to remote neighbors (will be collected in rankMap)
+            for (long itr : centralNeighbors) {
+                rankMap[itr] += distributedRank;
             }
         }
-
         count++;
     }
 
@@ -2588,8 +2613,19 @@ static void page_rank_command(int connFd, int serverPort,
     }
     instance_logger.info("Sent : " + JasmineGraphInstanceProtocol::OK);
 
+    string partitionCountValue = Utils::read_str_trim_wrapper(connFd, data, INSTANCE_DATA_LENGTH);
+    instance_logger.info("Received total partition count: " + partitionCountValue);
+    int partitionCount = stoi(partitionCountValue);
+
+    if (!Utils::send_str_wrapper(connFd, JasmineGraphInstanceProtocol::OK)) {
+        *loop_exit_p = true;
+        return;
+    }
+    instance_logger.info("Sent : " + JasmineGraphInstanceProtocol::OK);
+
     JasmineGraphHashMapLocalStore graphDB;
     JasmineGraphHashMapCentralStore centralDB;
+    JasmineGraphHashMapDuplicateCentralStore duplicateCentralDB;
 
     std::map<std::string, JasmineGraphHashMapLocalStore> graphDBMapLocalStoresPgrnk;
     if (JasmineGraphInstanceService::isGraphDBExists(graphID, partitionID)) {
@@ -2600,14 +2636,20 @@ static void page_rank_command(int connFd, int serverPort,
         JasmineGraphInstanceService::loadInstanceCentralStore(graphID, partitionID, graphDBMapCentralStores);
     }
 
+    std::map<std::string, JasmineGraphHashMapDuplicateCentralStore> graphDBMapDuplicateCentralStoresPgrnk;
+    if (JasmineGraphInstanceService::isInstanceDuplicateCentralStoreExists(graphID, partitionID)) {
+        JasmineGraphInstanceService::loadInstanceDuplicateCentralStore(graphID, partitionID, graphDBMapDuplicateCentralStoresPgrnk);
+    }
+
     graphDB = graphDBMapLocalStoresPgrnk[graphID + "_" + partitionID];
     centralDB = graphDBMapCentralStores[graphID + "_centralstore_" + partitionID];
+    duplicateCentralDB = graphDBMapDuplicateCentralStoresPgrnk[graphID + "_centralstore_dp_" + partitionID];
 
     instance_logger.info("Start : Calculate Local PageRank");
 
     map<long, double> pageRankResults =
         calculateLocalPageRank(graphID, alpha, partitionID, serverPort, TOP_K_PAGE_RANK, graphVertexCount, graphDB,
-                               centralDB, workerSockets, iterations);
+                               centralDB, duplicateCentralDB, workerSockets, iterations, partitionCount);
     instance_logger.info("PageRank size: " + to_string(pageRankResults.size()));
 
     map<long, double> pageRankLocalstore;
