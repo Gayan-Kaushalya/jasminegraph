@@ -102,7 +102,7 @@ void PageRankExecutor::execute() {
     workerList.pop_back();
     pageRank_logger.info("Worker list " + workerList);
 
-    int partitionCount = 0;
+    partitionCount = 0;
     for (auto workerIter = graphPartitionedHosts.begin(); workerIter != graphPartitionedHosts.end(); workerIter++) {
         partitionCount += workerIter->second.partitionID.size();
     }
@@ -339,7 +339,5 @@ void PageRankExecutor::doPageRank(std::string graphID, double alpha, int iterati
     close(sockfd);
 }
 
-int PageRankExecutor::getUid() {
-    return AbstractExecutor::getUid();
-}
+
 
