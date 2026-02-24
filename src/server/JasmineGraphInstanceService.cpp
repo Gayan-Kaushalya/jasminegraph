@@ -2783,8 +2783,19 @@ static void worker_page_rank_distribution_command(
     }
     instance_logger.info("Sent : " + JasmineGraphInstanceProtocol::OK);
 
+    string partitionCountValue = Utils::read_str_trim_wrapper(connFd, data, INSTANCE_DATA_LENGTH);
+    instance_logger.info("Received total partition count: " + partitionCountValue);
+    int partitionCount = stoi(partitionCountValue);
+
+    if (!Utils::send_str_wrapper(connFd, JasmineGraphInstanceProtocol::OK)) {
+        *loop_exit_p = true;
+        return;
+    }
+    instance_logger.info("Sent : " + JasmineGraphInstanceProtocol::OK);
+
     JasmineGraphHashMapLocalStore graphDB;
     JasmineGraphHashMapCentralStore centralDB;
+    JasmineGraphHashMapDuplicateCentralStore duplicateCentralDB;
 
     std::map<std::string, JasmineGraphHashMapLocalStore> graphDBMapLocalStoresPgrnk;
     if (JasmineGraphInstanceService::isGraphDBExists(graphID, partitionID)) {
@@ -2795,12 +2806,18 @@ static void worker_page_rank_distribution_command(
         JasmineGraphInstanceService::loadInstanceCentralStore(graphID, partitionID, graphDBMapCentralStores);
     }
 
+    std::map<std::string, JasmineGraphHashMapDuplicateCentralStore> graphDBMapDuplicateCentralStoresPgrnk;
+    if (JasmineGraphInstanceService::isInstanceDuplicateCentralStoreExists(graphID, partitionID)) {
+        JasmineGraphInstanceService::loadInstanceDuplicateCentralStore(graphID, partitionID, graphDBMapDuplicateCentralStoresPgrnk);
+    }
+
     graphDB = graphDBMapLocalStoresPgrnk[graphID + "_" + partitionID];
     centralDB = graphDBMapCentralStores[graphID + "_centralstore_" + partitionID];
+    duplicateCentralDB = graphDBMapDuplicateCentralStoresPgrnk[graphID + "_centralstore_dp_" + partitionID];
 
     map<long, double> pageRankResults =
         calculateLocalPageRank(graphID, alpha, partitionID, serverPort, TOP_K_PAGE_RANK, graphVertexCount, graphDB,
-                               centralDB, workerSockets, iterations);
+                               centralDB, duplicateCentralDB, workerSockets, iterations, partitionCount);
 
     instance_logger.info("PageRank size: " + to_string(pageRankResults.size()));
 
