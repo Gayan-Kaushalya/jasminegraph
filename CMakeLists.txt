@@ -331,8 +331,6 @@ if(MPI_CXX_FOUND)
     target_link_libraries(JasmineGraph PRIVATE MPI::MPI_CXX)
 endif()
 
-# Link XtraPuLP library
-target_link_libraries(JasmineGraphLib PRIVATE xtrapulp_lib)
 
 include_directories(/usr/local/libhdfs3/include/hdfs/)
 include_directories(/usr/include/oneapi/)
@@ -422,21 +420,34 @@ if (CMAKE_BUILD_TYPE STREQUAL "DEBUG")
     )
 endif ()
 
-# Build XtraPuLP partitioner
-add_custom_target(xtrapulp ALL
-    COMMAND ${CMAKE_COMMAND} -E echo "Building XtraPuLP MPI partitioner..."
-    COMMAND sh -c "cd ${CMAKE_SOURCE_DIR}/src/partitioner/xtrapulp && ${CMAKE_MAKE_PROGRAM}"
-    COMMENT "Building XtraPuLP MPI partitioner"
-    USES_TERMINAL
+# XtraPuLP library sources (everything except main.cpp)
+set(XTRAPULP_LIB_SOURCES
+    src/partitioner/xtrapulp/comms.cpp
+    src/partitioner/xtrapulp/dist_graph.cpp
+    src/partitioner/xtrapulp/fast_map.cpp
+    src/partitioner/xtrapulp/generate.cpp
+    src/partitioner/xtrapulp/io_pp.cpp
+    src/partitioner/xtrapulp/pulp_data.cpp
+    src/partitioner/xtrapulp/pulp_init.cpp
+    src/partitioner/xtrapulp/pulp_util.cpp
+    src/partitioner/xtrapulp/pulp_v.cpp
+    src/partitioner/xtrapulp/pulp_ve.cpp
+    src/partitioner/xtrapulp/pulp_vec.cpp
+    src/partitioner/xtrapulp/pulp_w.cpp
+    src/partitioner/xtrapulp/repart.cpp
+    src/partitioner/xtrapulp/util.cpp
+    src/partitioner/xtrapulp/xtrapulp.cpp
 )
 
-# Create imported library for XtraPuLP
-add_library(xtrapulp_lib STATIC IMPORTED)
-set_target_properties(xtrapulp_lib PROPERTIES
-    IMPORTED_LOCATION ${CMAKE_SOURCE_DIR}/src/partitioner/xtrapulp/libxtrapulp.a
-)
+# Build XtraPuLP as a native static library
+add_library(xtrapulp_lib STATIC ${XTRAPULP_LIB_SOURCES})
+target_link_libraries(xtrapulp_lib PUBLIC MPI::MPI_CXX OpenMP::OpenMP_CXX)
+target_include_directories(xtrapulp_lib PUBLIC ${CMAKE_SOURCE_DIR}/src/partitioner/xtrapulp)
 
-# Ensure XtraPuLP is built before the imported library is used
-add_dependencies(xtrapulp_lib xtrapulp)
-add_dependencies(JasmineGraphLib xtrapulp_lib)
-add_dependencies(JasmineGraph xtrapulp)
+# Link XtraPuLP into JasmineGraph
+target_link_libraries(JasmineGraphLib PRIVATE xtrapulp_lib)
+
+# Build XtraPuLP standalone executable (used by XtraPulpPartitioner via mpirun)
+add_executable(xtrapulp_exe src/partitioner/xtrapulp/main.cpp)
+target_link_libraries(xtrapulp_exe PRIVATE xtrapulp_lib)
+set_target_properties(xtrapulp_exe PROPERTIES OUTPUT_NAME xtrapulp)
