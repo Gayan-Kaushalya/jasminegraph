@@ -43,6 +43,20 @@
 //@HEADER
 */
 
+#include <mpi.h>
+#include <omp.h>
+#include <cstdlib>
+#include <cstdint>
+#include <cassert>
+#include <cstdio>
+
+#include "xtrapulp.h"
+#include "dist_graph.h"
+#include "util.h"
+
+extern int procid, nprocs;
+extern bool verbose, debug, verify;
+
 int repart(dist_graph_t *g, int32_t* local_parts)
 {
   MPI_Barrier(MPI_COMM_WORLD);
