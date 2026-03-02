@@ -3520,9 +3520,9 @@ static void sheep_command(std::string masterIP, int connFd, SQLiteDBInterface *s
     
     string sqlStatement =
         "INSERT INTO graph (name,upload_path,upload_start_time,upload_end_time,graph_status_idgraph_status,"
-        "vertexcount,centralpartitioncount,edgecount) VALUES(\"" +
+        "vertexcount,centralpartitioncount,edgecount,id_algorithm) VALUES(\"" +
         graphName + "\", \"" + graphPath + "\", \"" + uploadStartTime + "\", \"\",\"" +
-        to_string(Conts::GRAPH_STATUS::LOADING) + "\", \"\", \"\", \"\")";
+        to_string(Conts::GRAPH_STATUS::LOADING) + "\", \"\", \"\", \"\", 5)";
     int graphID = sqlite->runInsert(sqlStatement);
     
     if (graphID < 0) {
