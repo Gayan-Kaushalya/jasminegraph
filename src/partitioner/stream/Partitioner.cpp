@@ -36,6 +36,9 @@ partitionedEdge Partitioner::addEdge(std::pair<std::string, std::string> edge) {
         case spt::Algorithms::LDG:
             return this->ldgPartitioning(edge);
             break;
+        case spt::Algorithms::LEOPARD:
+            return this->leopardPartitioning(edge);
+            break;
         default:
             break;
     }
@@ -105,6 +108,98 @@ partitionedEdge Partitioner::ldgPartitioning(std::pair<std::string, std::string>
     }
     this->totalEdges += 1;
     return {{edge.first, firstIndex}, {edge.second, secondIndex}};
+}
+
+/**
+ * LEOPARD: Locally Estimated Partitioning Algorithm for Robust Distributed graph processing.
+ * Score for assigning vertex v to partition S:
+ *   score(v, S) = |N(v) ∩ S| - α·(γ/2)·|S|^(γ-1)
+ * where:
+ *   α = sqrt(k) · m / n^γ,  γ = 1.5
+ *   |N(v) ∩ S| = number of already-assigned neighbours of v that reside in S
+ *
+ * This is the streaming variant (no ripple-effect reassignment).
+ **/
+partitionedEdge Partitioner::leopardPartitioning(std::pair<std::string, std::string> edge) {
+    const double gamma = 1.5;
+    const std::string& u = edge.first;
+    const std::string& v = edge.second;
+
+    // Initialise per-vertex neighbour-count vectors on first sight
+    if (leopardNeighborCounts.find(u) == leopardNeighborCounts.end())
+        leopardNeighborCounts[u] = std::vector<int>(this->numberOfPartitions, 0);
+    if (leopardNeighborCounts.find(v) == leopardNeighborCounts.end())
+        leopardNeighborCounts[v] = std::vector<int>(this->numberOfPartitions, 0);
+
+    // Scoring helper: higher is better
+    auto scoreFn = [&](const std::string& vertex, int partId) -> double {
+        long m = std::max(this->totalEdges, 1L);
+        long n = std::max(this->totalVertices, 1L);
+        double alpha = std::sqrt((double)this->numberOfPartitions) * (double)m / std::pow((double)n, gamma);
+        double neighborScore = (double)leopardNeighborCounts.at(vertex)[partId];
+        double partSize = this->partitions[partId].getVertextCountQuick();
+        double penalty = (partSize > 0.0) ? alpha * (gamma / 2.0) * std::pow(partSize, gamma - 1.0) : 0.0;
+        return neighborScore - penalty;
+    };
+
+    auto bestPartFn = [&](const std::string& vertex) -> int {
+        int best = 0;
+        double bestScore = scoreFn(vertex, 0);
+        for (int i = 1; i < this->numberOfPartitions; i++) {
+            double s = scoreFn(vertex, i);
+            if (s > bestScore) { bestScore = s; best = i; }
+        }
+        return best;
+    };
+
+    bool uExists = (leopardVertexPartition.find(u) != leopardVertexPartition.end());
+    bool vExists = (leopardVertexPartition.find(v) != leopardVertexPartition.end());
+
+    // --- Assign u if new ---
+    int uPartition;
+    if (!uExists) {
+        uPartition = bestPartFn(u);
+        leopardVertexPartition[u] = uPartition;
+        this->totalVertices += 1;
+    } else {
+        uPartition = leopardVertexPartition[u];
+    }
+
+    // Tell v that it has a neighbour (u) in uPartition, then assign v if new
+    leopardNeighborCounts[v][uPartition]++;
+
+    int vPartition;
+    if (!vExists) {
+        vPartition = bestPartFn(v);
+        leopardVertexPartition[v] = vPartition;
+        this->totalVertices += 1;
+    } else {
+        vPartition = leopardVertexPartition[v];
+    }
+
+    // Tell u that it has a neighbour (v) in vPartition
+    leopardNeighborCounts[u][vPartition]++;
+
+    // Check if edge already exists (both ends lived in same partition)
+    if (uExists && vExists && uPartition == vPartition) {
+        auto uNeighbors = this->partitions[uPartition].getNeighbors(u);
+        if (uNeighbors.find(v) != uNeighbors.end()) {
+            // Undo the neighbour-count increments added above for duplicate
+            leopardNeighborCounts[v][uPartition]--;
+            leopardNeighborCounts[u][vPartition]--;
+            return {{u, uPartition}, {v, vPartition}};
+        }
+    }
+
+    // Place edge into partition or record as edge-cut
+    if (uPartition == vPartition) {
+        this->partitions[uPartition].addEdge(edge, this->isDirect);
+    } else {
+        this->partitions[uPartition].addToEdgeCuts(u, v, vPartition);
+        this->partitions[vPartition].addToEdgeCuts(v, u, uPartition);
+    }
+    this->totalEdges += 1;
+    return {{u, uPartition}, {v, vPartition}};
 }
 
 partitionedEdge Partitioner::hashPartitioning(std::pair<std::string, std::string> edge) {

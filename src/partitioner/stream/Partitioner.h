@@ -12,6 +12,7 @@
  */
 #ifndef JASMINE_PARTITIONER_HEADER
 #define JASMINE_PARTITIONER_HEADER
+#include <unordered_map>
 #include <vector>
 
 #include "./Partition.h"
@@ -19,7 +20,7 @@
 
 typedef std::vector<std::pair<std::string, long>> partitionedEdge;
 namespace spt {  // spt : Streaming Partitioner
-enum Algorithms { HASH, FENNEL, LDG };
+enum Algorithms { HASH, FENNEL, LDG, LEOPARD };
 static Algorithms getPartitioner(string id) {
     if (id == "1") {
         return Algorithms::HASH;
@@ -27,6 +28,8 @@ static Algorithms getPartitioner(string id) {
         return Algorithms::FENNEL;
     } else if (id == "3") {
         return Algorithms::LDG;
+    } else if (id == "4") {
+        return Algorithms::LEOPARD;
     }
     return  Algorithms::HASH;
 }
@@ -41,6 +44,9 @@ class Partitioner {
     bool isDirect;
     spt::Algorithms algorithmInUse;
     SQLiteDBInterface *sqlite;
+    // LEOPARD-specific state: per-vertex neighbor counts per partition and current partition assignment
+    std::unordered_map<std::string, std::vector<int>> leopardNeighborCounts;
+    std::unordered_map<std::string, int> leopardVertexPartition;
     // perPartitionCap is : Number of vertices that can be store in this partition, This is a dynamic shared pointer
     // containing a value depending on the whole graph size and # of partitions
 
@@ -58,6 +64,7 @@ class Partitioner {
     partitionedEdge hashPartitioning(std::pair<std::string, std::string> edge);
     partitionedEdge fennelPartitioning(std::pair<std::string, std::string> edge);
     partitionedEdge ldgPartitioning(std::pair<std::string, std::string> edge);
+    partitionedEdge leopardPartitioning(std::pair<std::string, std::string> edge);
     static std::pair<long, long> deserialize(std::string data);
     void updateMetaDB();
     void setGraphID(int graphId){this->graphID = graphId;};
