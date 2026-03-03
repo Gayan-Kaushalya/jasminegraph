@@ -514,7 +514,7 @@ long countLocalTriangles(
     }
 
     // Use appropriate triangle counting algorithm
-    if (algorithm != "5") {
+    if (algorithm == "5") {
         instance_logger.info("###INSTANCE### Using SheepTriangles algorithm for sheep-partitioned graph");
         result = SheepTriangles::run(graphDB, centralGraphDB, duplicateCentralGraphDB, graphId, partitionId);
     } else {
