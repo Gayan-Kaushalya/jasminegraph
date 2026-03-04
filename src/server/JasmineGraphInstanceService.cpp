@@ -506,6 +506,9 @@ long countLocalTriangles(
         std::vector<vector<pair<string, string>>> queryResults = refToSqlite->runSelect(query);
         if (!queryResults.empty() && !queryResults[0].empty()) {
             algorithm = queryResults[0][0].second;
+
+            // Log the algorithm name
+            instance_logger.info("###INSTANCE### Graph partitioning algorithm: " + algorithm);
         }
         refToSqlite->finalize();
         delete refToSqlite;
