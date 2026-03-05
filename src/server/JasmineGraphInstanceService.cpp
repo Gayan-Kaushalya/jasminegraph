@@ -501,17 +501,18 @@ long countLocalTriangles(
     std::string algorithm = "metis";  // default
     try {
         SQLiteDBInterface *refToSqlite = new SQLiteDBInterface();
-        refToSqlite->init();
-        std::string query = "SELECT id_algorithm FROM graph WHERE idgraph = '" + graphId + "'";
-        std::vector<vector<pair<string, string>>> queryResults = refToSqlite->runSelect(query);
-        if (!queryResults.empty() && !queryResults[0].empty()) {
-            algorithm = queryResults[0][0].second;
-
-            // Log the algorithm name
+        if (refToSqlite->init() != 0) {
+            instance_logger.error("###INSTANCE### Failed to open metadb; defaulting to metis algorithm");
+            delete refToSqlite;
+        } else {
+            std::string algo = refToSqlite->getPartitionAlgoByGraphID(graphId);
+            if (!algo.empty()) {
+                algorithm = algo;
+            }
             instance_logger.info("###INSTANCE### Graph partitioning algorithm: " + algorithm);
+            refToSqlite->finalize();
+            delete refToSqlite;
         }
-        refToSqlite->finalize();
-        delete refToSqlite;
     } catch (const std::exception &e) {
         instance_logger.error("Error checking graph algorithm: " + std::string(e.what()));
     }
