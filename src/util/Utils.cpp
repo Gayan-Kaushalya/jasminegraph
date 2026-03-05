@@ -788,6 +788,17 @@ int Utils::createDatabaseFromDDL(const char *dbLocation, const char *ddlFileLoca
         util_logger.error("DDL file not found: " + string(ddlFileLocation));
         return -1;
     }
+
+    // Ensure parent directory exists before creating the database file
+    string dbPath(dbLocation);
+    size_t lastSlash = dbPath.find_last_of('/');
+    if (lastSlash != string::npos) {
+        string parentDir = dbPath.substr(0, lastSlash);
+        if (!parentDir.empty() && !Utils::fileExists(parentDir.c_str())) {
+            Utils::createDirectory(parentDir);
+        }
+    }
+
     ifstream ddlFile(ddlFileLocation);
 
     stringstream buffer;
