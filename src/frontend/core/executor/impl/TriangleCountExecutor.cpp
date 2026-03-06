@@ -565,6 +565,13 @@ void TriangleCountExecutor::execute() {
     // Capture the master trace context for all workers
     std::string masterTraceContext = OpenTelemetryUtil::getCurrentTraceContext();
 
+    // Look up partition algorithm on master side to send to workers
+    std::string partitionAlgorithm = sqlite->getPartitionAlgoByGraphID(graphId);
+    if (partitionAlgorithm.empty()) {
+        partitionAlgorithm = "metis";
+    }
+    triangleCount_logger.info("###TRIANGLE-COUNT-EXECUTOR### Partition algorithm for graph " + graphId + ": " + partitionAlgorithm);
+
     vector<Utils::worker> workerList = Utils::getWorkerList(sqlite);
     int workerListSize = workerList.size();
     for (int i = 0; i < workerListSize; i++) {
@@ -593,7 +600,7 @@ void TriangleCountExecutor::execute() {
                     std::launch::async, TriangleCountExecutor::getTriangleCount, atoi(graphId.c_str()), host,
                     workerPort, workerDataPort, atoi(partitionId.c_str()), masterIP, uniqueId,
                     isCompositeAggregation, threadPriority, fileCombinations, &combinationWorkerMap,
-                    &triangleTree, &triangleTreeMutex, masterTraceContext));
+                    &triangleTree, &triangleTreeMutex, masterTraceContext, partitionAlgorithm));
             }
         }
     }
@@ -737,7 +744,7 @@ long TriangleCountExecutor::getTriangleCount(
     bool isCompositeAggregation, int threadPriority, std::vector<std::vector<string>> fileCombinations,
     std::map<std::string, std::string> *combinationWorkerMap_p,
     std::unordered_map<long, std::unordered_map<long, std::unordered_set<long>>> *triangleTree_p,
-    std::mutex *triangleTreeMutex_p, const std::string& masterTraceContext) {
+    std::mutex *triangleTreeMutex_p, const std::string& masterTraceContext, const std::string& partitionAlgorithm) {
 
     OTEL_TRACE_OPERATION("worker_communication_" + host + "_partition_" + std::to_string(partitionId));
 
@@ -872,6 +879,18 @@ long TriangleCountExecutor::getTriangleCount(
 
                 triangleCount_logger.log("Sent : Trace Context " + traceContext, "info");
                 response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+
+                // Send partition algorithm to worker so it doesn't need metadb access
+                if (response.compare(JasmineGraphInstanceProtocol::OK) == 0) {
+                    triangleCount_logger.log("Received : " + JasmineGraphInstanceProtocol::OK, "info");
+                    std::string algoToSend = partitionAlgorithm.empty() ? "metis" : partitionAlgorithm;
+                    result_wr = write(sockfd, algoToSend.c_str(), algoToSend.size());
+                    if (result_wr < 0) {
+                        triangleCount_logger.log("Error writing partition algorithm to socket", "error");
+                    }
+                    triangleCount_logger.log("Sent : Partition Algorithm " + algoToSend, "info");
+                    response = Utils::read_str_trim_wrapper(sockfd, data, INSTANCE_DATA_LENGTH);
+                }
             }
 
             triangleCount_logger.log("Got response : |" + response + "|", "info");
