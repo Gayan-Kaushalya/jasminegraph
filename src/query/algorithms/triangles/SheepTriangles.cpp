@@ -16,6 +16,9 @@ limitations under the License.
 #include "../../../util/telemetry/OpenTelemetryUtil.h"
 #include <chrono>
 #include <algorithm>
+#include <set>
+#include <unordered_map>
+#include <sstream>
 
 Logger sheep_triangle_logger;
 
@@ -95,60 +98,101 @@ SheepTriangleResult SheepTriangles::countTriangles(
     SheepTriangleResult result;
     result.count = 0;
 
-    std::ostringstream triangleStream;
+    std::basic_ostringstream<char> triangleStream;
 
-    // Build degree-ordered traversal: vertices sorted by ascending degree.
-    // Low-degree vertices as the outer "u" make inner loops shorter on average,
-    // reducing intersection work — same principle as in TriangleCountExecutor.
-    // Vertices with degree <= 1 cannot be part of any triangle and are skipped.
-    std::map<long, std::vector<long>> degreeMap;  // degree -> vertices with that degree
+    // Build degree distribution from the merged edge map — equivalent to trian's distributionMap.
+    std::map<long, long> distributionMap;
     for (const auto &entry : edgeMap) {
-        long degree = static_cast<long>(entry.second.size());
-        if (degree > 1) {
-            degreeMap[degree].push_back(entry.first);
-        }
+        distributionMap[entry.first] = static_cast<long>(entry.second.size());
     }
 
-    // Iterate in ascending degree order; u < v < w ordering prevents double-counting.
-    for (const auto &deg_entry : degreeMap) {
-        for (long u : deg_entry.second) {
-            const auto &u_neighbors = edgeMap[u];
+    // --- Exact same steps as Triangles::countTriangles ---
 
-            // For each neighbor v of u where v > u (ordering prevents duplicates)
-            for (long v : u_neighbors) {
-                if (v <= u) continue;  // Enforce u < v
+    std::map<long, std::set<long>> degreeMap;
+    for (auto it = distributionMap.begin(); it != distributionMap.end(); ++it) {
+        long degree = it->second;
+        if (degree == 1) continue;
+        long startVertexId = it->first;
+        degreeMap[degree].insert(startVertexId);
+    }
 
-                auto v_it = edgeMap.find(v);
-                if (v_it == edgeMap.end()) continue;
-                const auto &v_neighbors = v_it->second;
+    long triangleCount = 0;
+    std::unordered_map<long, std::unordered_map<long, std::unordered_set<long>>> triangleTree;
 
-                // For each neighbor w of u where w > v (enforce u < v < w)
-                for (long w : u_neighbors) {
-                    if (w <= v) continue;  // Enforce v < w
-
-                    // Check if v is connected to w (completing the triangle)
-                    if (v_neighbors.find(w) != v_neighbors.end()) {
-                        // Found triangle (u, v, w) with u < v < w
-                        result.count++;
-
-                        if (returnTriangles) {
-                            triangleStream << u << "," << v << "," << w << ":";
+    for (auto iterator = degreeMap.begin(); iterator != degreeMap.end(); ++iterator) {
+        auto &vertices = iterator->second;
+        for (auto verticesIterator = vertices.begin(); verticesIterator != vertices.end(); ++verticesIterator) {
+            long temp = *verticesIterator;
+            auto &unorderedUSet = edgeMap[temp];
+            for (auto uSetIterator = unorderedUSet.begin(); uSetIterator != unorderedUSet.end(); ++uSetIterator) {
+                long u = *uSetIterator;
+                if (temp == u) continue;
+                auto &unorderedNuSet = edgeMap[u];
+                for (auto nuSetIterator = unorderedNuSet.begin(); nuSetIterator != unorderedNuSet.end();
+                     ++nuSetIterator) {
+                    long nu = *nuSetIterator;
+                    if (temp == nu) continue;
+                    if (u == nu) continue;
+                    auto &edgeMapNu = edgeMap[nu];
+                    if ((unorderedUSet.find(nu) != unorderedUSet.end()) ||
+                        (edgeMapNu.find(temp) != edgeMapNu.end())) {
+                        long varOne = temp;
+                        long varTwo = u;
+                        long varThree = nu;
+                        if (varOne > varTwo) {
+                            varOne ^= varTwo;
+                            varTwo ^= varOne;
+                            varOne ^= varTwo;
+                        }
+                        if (varOne > varThree) {
+                            varOne ^= varThree;
+                            varThree ^= varOne;
+                            varOne ^= varThree;
+                        }
+                        if (varTwo > varThree) {
+                            varTwo ^= varThree;
+                            varThree ^= varTwo;
+                            varTwo ^= varThree;
+                        }
+                        auto &itemRes = triangleTree[varOne];
+                        auto itemResIterator = itemRes.find(varTwo);
+                        if (itemResIterator != itemRes.end()) {
+                            auto &set2 = itemRes[varTwo];
+                            auto set2Iter = set2.find(varThree);
+                            if (set2Iter == set2.end()) {
+                                set2.insert(varThree);
+                                triangleCount++;
+                                if (returnTriangles) {
+                                    triangleStream << varOne << "," << varTwo << "," << varThree << ":";
+                                }
+                            }
+                        } else {
+                            triangleTree[varOne][varTwo].insert(varThree);
+                            triangleCount++;
+                            if (returnTriangles) {
+                                triangleStream << varOne << "," << varTwo << "," << varThree << ":";
+                            }
                         }
                     }
                 }
             }
         }
     }
-    
+
+    triangleTree.clear();
+
+    // --- End of trian steps ---
+
+    result.count = triangleCount;
     if (returnTriangles) {
-        std::string triangles = triangleStream.str();
+        string triangles = triangleStream.str();
         if (triangles.empty()) {
             result.triangles = "NILL";
         } else {
-            triangles.pop_back();  // Remove trailing ':'
+            triangles.erase(triangles.size() - 1);
             result.triangles = std::move(triangles);
         }
     }
-    
+
     return result;
 }
