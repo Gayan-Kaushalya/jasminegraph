@@ -91,37 +91,49 @@ void SheepTriangles::mergeStores(
 SheepTriangleResult SheepTriangles::countTriangles(
     std::map<long, std::unordered_set<long>> &edgeMap,
     bool returnTriangles) {
-    
+
     SheepTriangleResult result;
     result.count = 0;
-    
+
     std::ostringstream triangleStream;
-    std::unordered_set<std::string> seenTriangles;  // Prevent duplicates
-    
-    // For each vertex u
-    for (const auto &u_entry : edgeMap) {
-        long u = u_entry.first;
-        const auto &u_neighbors = u_entry.second;
-        
-        // For each neighbor v of u where v > u (ordering prevents duplicates)
-        for (long v : u_neighbors) {
-            if (v <= u) continue;  // Enforce u < v
-            
-            auto v_it = edgeMap.find(v);
-            if (v_it == edgeMap.end()) continue;
-            const auto &v_neighbors = v_it->second;
-            
-            // For each neighbor w of u where w > v (enforce u < v < w)
-            for (long w : u_neighbors) {
-                if (w <= v) continue;  // Enforce v < w
-                
-                // Check if v is connected to w (completing the triangle)
-                if (v_neighbors.find(w) != v_neighbors.end()) {
-                    // Found triangle (u, v, w) with u < v < w
-                    result.count++;
-                    
-                    if (returnTriangles) {
-                        triangleStream << u << "," << v << "," << w << ":";
+
+    // Build degree-ordered traversal: vertices sorted by ascending degree.
+    // Low-degree vertices as the outer "u" make inner loops shorter on average,
+    // reducing intersection work — same principle as in TriangleCountExecutor.
+    // Vertices with degree <= 1 cannot be part of any triangle and are skipped.
+    std::map<long, std::vector<long>> degreeMap;  // degree -> vertices with that degree
+    for (const auto &entry : edgeMap) {
+        long degree = static_cast<long>(entry.second.size());
+        if (degree > 1) {
+            degreeMap[degree].push_back(entry.first);
+        }
+    }
+
+    // Iterate in ascending degree order; u < v < w ordering prevents double-counting.
+    for (const auto &deg_entry : degreeMap) {
+        for (long u : deg_entry.second) {
+            const auto &u_neighbors = edgeMap[u];
+
+            // For each neighbor v of u where v > u (ordering prevents duplicates)
+            for (long v : u_neighbors) {
+                if (v <= u) continue;  // Enforce u < v
+
+                auto v_it = edgeMap.find(v);
+                if (v_it == edgeMap.end()) continue;
+                const auto &v_neighbors = v_it->second;
+
+                // For each neighbor w of u where w > v (enforce u < v < w)
+                for (long w : u_neighbors) {
+                    if (w <= v) continue;  // Enforce v < w
+
+                    // Check if v is connected to w (completing the triangle)
+                    if (v_neighbors.find(w) != v_neighbors.end()) {
+                        // Found triangle (u, v, w) with u < v < w
+                        result.count++;
+
+                        if (returnTriangles) {
+                            triangleStream << u << "," << v << "," << w << ":";
+                        }
                     }
                 }
             }
