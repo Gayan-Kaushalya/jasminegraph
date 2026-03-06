@@ -184,6 +184,11 @@ void SheepTriangleCountExecutor::execute() {
     // Capture the master trace context for all workers
     std::string masterTraceContext = OpenTelemetryUtil::getCurrentTraceContext();
 
+    std::string partitionAlgorithm = sqlite->getPartitionAlgoByGraphID(graphId);
+    if (partitionAlgorithm.empty()) {
+        partitionAlgorithm = "metis";
+    }
+
     vector<Utils::worker> workerList = Utils::getWorkerList(sqlite);
     int workerListSize = workerList.size();
     for (int i = 0; i < workerListSize; i++) {
@@ -213,7 +218,7 @@ void SheepTriangleCountExecutor::execute() {
                     std::launch::async, TriangleCountExecutor::getTriangleCount, atoi(graphId.c_str()), host,
                     workerPort, workerDataPort, atoi(partitionId.c_str()), masterIP, uniqueId,
                     isCompositeAggregation, threadPriority, fileCombinations, &combinationWorkerMap,
-                    &triangleTree, &triangleTreeMutex, masterTraceContext));
+                    &triangleTree, &triangleTreeMutex, masterTraceContext, partitionAlgorithm));
             }
         }
     }
@@ -359,12 +364,12 @@ long SheepTriangleCountExecutor::getSheepTriangleCount(
     bool isCompositeAggregation, int threadPriority, std::vector<std::vector<string>> fileCombinations,
     std::map<std::string, std::string> *combinationWorkerMap_p,
     std::unordered_map<long, std::unordered_map<long, std::unordered_set<long>>> *triangleTree_p,
-    std::mutex *triangleTreeMutex_p, const std::string& masterTraceContext) {
+    std::mutex *triangleTreeMutex_p, const std::string& masterTraceContext, const std::string& partitionAlgorithm) {
     
     return TriangleCountExecutor::getTriangleCount(graphId, host, port, dataPort, partitionId, masterIP, uniqueId,
                                                    isCompositeAggregation, threadPriority, fileCombinations,
                                                    combinationWorkerMap_p, triangleTree_p, triangleTreeMutex_p,
-                                                   masterTraceContext);
+                                                   masterTraceContext, partitionAlgorithm);
 }
 
 std::string SheepTriangleCountExecutor::copyCompositeCentralStoreToAggregator(std::string aggregatorHostName,
