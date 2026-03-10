@@ -20,6 +20,7 @@ limitations under the License.
 #include "../../../centralstore/JasmineGraphHashMapCentralStore.h"
 #include "../../../centralstore/JasmineGraphHashMapDuplicateCentralStore.h"
 #include "../../../localstore/JasmineGraphHashMapLocalStore.h"
+#include "Triangles.h"
 
 struct SheepTriangleResult {
     long count;

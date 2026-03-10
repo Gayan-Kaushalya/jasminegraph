@@ -24,48 +24,9 @@ long SheepTriangles::run(JasmineGraphHashMapLocalStore &graphDB,
                          JasmineGraphHashMapDuplicateCentralStore &duplicateCentralStore,
                          std::string graphId,
                          std::string partitionId) {
-    OTEL_TRACE_FUNCTION();
-    
-    std::string workerInfo = "worker_" + graphId + "_partition_" + partitionId;
-    sheep_triangle_logger.info("###SHEEP-TRIANGLE### " + workerInfo + " Starting optimized sheep triangle counting");
-    
-    auto startTime = std::chrono::high_resolution_clock::now();
-    
-    // Extract data from stores
-    std::map<long, std::unordered_set<long>> localMap;
-    std::map<long, std::unordered_set<long>> centralMap;
-    std::map<long, std::unordered_set<long>> duplicateMap;
-    
-    {
-        ScopedTracer data_extract("sheep_extract_data");
-        localMap = graphDB.getUnderlyingHashMap();
-        centralMap = centralStore.getUnderlyingHashMap();
-        duplicateMap = duplicateCentralStore.getUnderlyingHashMap();
-    }
-    
-    // Merge stores efficiently
-    {
-        ScopedTracer merge_phase("sheep_merge_stores");
-        mergeStores(localMap, centralMap, duplicateMap);
-    }
-    
-    auto mergeEnd = std::chrono::high_resolution_clock::now();
-    auto mergeDuration = std::chrono::duration_cast<std::chrono::milliseconds>(mergeEnd - startTime).count();
-    sheep_triangle_logger.info("Merge time: " + std::to_string(mergeDuration) + " ms");
-    
-    // Count triangles with optimized algorithm
-    SheepTriangleResult result;
-    {
-        ScopedTracer count_phase("sheep_count_triangles");
-        result = countTriangles(localMap, false);
-    }
-    
-    auto endTime = std::chrono::high_resolution_clock::now();
-    auto totalDuration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
-    sheep_triangle_logger.info("###SHEEP-TRIANGLE### " + workerInfo + " Complete. Count: " + 
-                              std::to_string(result.count) + " Time: " + std::to_string(totalDuration) + " ms");
-    
-    return result.count;
+    sheep_triangle_logger.info("###SHEEP-TRIANGLE### worker_" + graphId + "_partition_" + partitionId +
+                               " delegating to standard Triangles algorithm");
+    return Triangles::run(graphDB, centralStore, duplicateCentralStore, graphId, partitionId, 0);
 }
 
 void SheepTriangles::mergeStores(
