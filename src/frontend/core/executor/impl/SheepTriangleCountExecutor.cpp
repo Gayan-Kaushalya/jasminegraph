@@ -12,6 +12,7 @@ limitations under the License.
  */
 
 #include "SheepTriangleCountExecutor.h"
+#include "TriangleCountExecutor.h"
 
 #include <netdb.h>
 #include <sys/socket.h>
@@ -26,6 +27,8 @@ limitations under the License.
 using namespace std::chrono;
 
 Logger sheepTriangleCount_logger;
+
+static std::mutex fileCombinationMutex;
 
 // Use the same static variables from TriangleCountExecutor for consistency
 extern std::mutex processStatusMutex;
