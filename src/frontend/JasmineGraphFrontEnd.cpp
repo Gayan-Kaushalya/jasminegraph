@@ -1403,7 +1403,9 @@ static void add_stream_kafka_command(int connFd, std::string &kafka_server_IP, c
             "\toption 1: Hash partitioning\n"
             "\toption 2: Fennel partitioning\n"
             "\toption 3: LDG partitioning\n"
-            "Choose an option(1,2,3): ";
+            "\toption 4: Leopard partitioning\n"
+            "\toption 5: Cuttana partitioning\n"
+            "Choose an option(1,2,3,4,5): ";
         result_wr = write(connFd, partitionSelectionMsg.c_str(), partitionSelectionMsg.length());
         if (result_wr < 0) {
             frontend_logger.error("Error writing to socket");
@@ -1413,7 +1415,7 @@ static void add_stream_kafka_command(int connFd, std::string &kafka_server_IP, c
         // Get user response.
         string partitionAlgoInput = Utils::getFrontendInput(connFd);
 
-        if (partitionAlgoInput == "1" || partitionAlgoInput == "2" || partitionAlgoInput == "3") {
+        if (partitionAlgoInput == "1" || partitionAlgoInput == "2" || partitionAlgoInput == "3" || partitionAlgoInput == "4" || partitionAlgoInput == "5") {
             string partition_success_msg = "Set partition technique: " + partitionAlgoInput;
             result_wr = write(connFd, partition_success_msg.c_str(), partition_success_msg.length());
             if (result_wr < 0) {
