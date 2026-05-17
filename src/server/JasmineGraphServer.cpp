@@ -457,7 +457,7 @@ void JasmineGraphServer::startRemoteWorkers(std::vector<int> workerPortsVector, 
                                         " --ENABLE_NMON " + enableNmon + " >" + worker_logdir + "/worker.log 2>&1";
                 } else {
                     serverStartScript =
-                        "DOCKER_API_VERSION=1.43 docker run -v " + instanceDataFolder + ":" + instanceDataFolder
+                        "DOCKER_API_VERSION=1.42 docker run -v " + instanceDataFolder + ":" + instanceDataFolder
                     + " ""-v " + aggregateDataFolder + ":" + aggregateDataFolder + " -v " + nmonFileLocation + ":" +
                         nmonFileLocation + " -v " + instanceDataFolder + "/" + to_string(i) + "/logs" + ":" +
                         "/var/tmp/jasminegraph/logs" + " -p " + std::to_string(workerPortsVector.at(i)) + ":" +
@@ -479,7 +479,7 @@ void JasmineGraphServer::startRemoteWorkers(std::vector<int> workerPortsVector, 
                         worker_logdir + "/worker.log 2>&1";
                 } else {
                     serverStartScript =
-                        "DOCKER_API_VERSION=1.43 docker -H ssh://" + host + " run -v " + instanceDataFolder + ":" +
+                        "DOCKER_API_VERSION=1.42 docker -H ssh://" + host + " run -v " + instanceDataFolder + ":" +
                             instanceDataFolder +
                         " -v " + aggregateDataFolder + ":" + aggregateDataFolder +
                             " -v /var/tmp:/var/tmp/hdfs/filechunks" " -v " + nmonFileLocation + ":" +
