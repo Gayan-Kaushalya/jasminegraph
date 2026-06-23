@@ -4845,16 +4845,65 @@ static void sheep_triangles_command(const std::string& masterIP, int conn_fd, SQ
     static std::atomic reqCounter = 0;
     string reqId = to_string(reqCounter++);
     frontend_logger.info("Started processing sheep triangle counting request " + reqId);
-    std::string sheepTriangleCount;
-    std::string errorMessage;
-    if (TriangleCountJobArgs args = {masterIP, sqlite, perfSqlite, jobScheduler, graph_id, uniqueId,
-                                     threadPriority, SHEEP_TRIANGLES, reqId, "Sheep-Partitioned Triangle Count: ",
-                                     sheepTriangleCount, errorMessage};
-        !executeTriangleCountJob(args)) {
+    auto begin = chrono::high_resolution_clock::now();
+    JobRequest jobDetails;
+    jobDetails.setJobId(std::to_string(uniqueId));
+    jobDetails.setJobType(SHEEP_TRIANGLES);
+
+    long graphSLA = -1;  // This prevents auto calibration for priority=1 (=default priority)
+    if (threadPriority > Conts::DEFAULT_THREAD_PRIORITY) {
+        // All high priority threads will be set the same high priority level
+        threadPriority = Conts::HIGH_PRIORITY_DEFAULT_VALUE;
+        graphSLA = JasmineGraphFrontEndCommon::getSLAForGraphId(sqlite, perfSqlite, graph_id, SHEEP_TRIANGLES,
+                                                                Conts::SLA_CATEGORY::LATENCY);
+        jobDetails.addParameter(Conts::PARAM_KEYS::GRAPH_SLA, std::to_string(graphSLA));
+    }
+
+    if (graphSLA == 0) {
+        if (JasmineGraphFrontEnd::areRunningJobsForSameGraph()) {
+            if (canCalibrate) {
+                // initial calibration
+                jobDetails.addParameter(Conts::PARAM_KEYS::AUTO_CALIBRATION, "false");
+            } else {
+                // auto calibration
+                jobDetails.addParameter(Conts::PARAM_KEYS::AUTO_CALIBRATION, "true");
+            }
+        } else {
+            frontend_logger.error("Can't calibrate the graph now");
+        }
+    }
+
+    jobDetails.setPriority(threadPriority);
+    jobDetails.setMasterIP(masterIP);
+    jobDetails.addParameter(Conts::PARAM_KEYS::GRAPH_ID, graph_id);
+    jobDetails.addParameter(Conts::PARAM_KEYS::CATEGORY, Conts::SLA_CATEGORY::LATENCY);
+    if (canCalibrate) {
+        jobDetails.addParameter(Conts::PARAM_KEYS::CAN_CALIBRATE, "true");
+    } else {
+        jobDetails.addParameter(Conts::PARAM_KEYS::CAN_CALIBRATE, "false");
+    }
+
+    jobScheduler->pushJob(jobDetails);
+    JobResponse jobResponse = jobScheduler->getResult(jobDetails);
+    std::string errorMessage = jobResponse.getParameter(Conts::PARAM_KEYS::ERROR_MESSAGE);
+
+    if (!errorMessage.empty()) {
         *loop_exit_p = true;
         writeSocketLine(conn_fd, errorMessage, loop_exit_p);
         return;
     }
+
+    std::string sheepTriangleCount = jobResponse.getParameter(Conts::PARAM_KEYS::TRIANGLE_COUNT);
+
+    if (threadPriority == Conts::HIGH_PRIORITY_DEFAULT_VALUE) {
+        highPriorityTaskCount--;
+    }
+
+    auto end = chrono::high_resolution_clock::now();
+    auto dur = end - begin;
+    auto msDuration = std::chrono::duration_cast<std::chrono::milliseconds>(dur).count();
+    frontend_logger.info("Req: " + reqId + " Sheep-Partitioned Triangle Count: " + sheepTriangleCount +
+                         " Time Taken: " + to_string(msDuration) + " milliseconds");
 
     writeSocketLine(conn_fd, sheepTriangleCount, loop_exit_p);
     if (*loop_exit_p) {
