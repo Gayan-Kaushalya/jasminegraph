@@ -38,9 +38,9 @@ std::unique_ptr<AbstractExecutor> ExecutorFactory::getExecutor(JobRequest jobReq
     } else if (CYPHER == jobRequest.getJobType()) {
         return std::make_unique<CypherQueryExecutor>(this->sqliteDB, this->perfDB, jobRequest);
     } else if (SEMANTIC_BEAM_SEARCH == jobRequest.getJobType()) {
-        return new SemanticBeamSearchExecutor(this->sqliteDB, this->perfDB, jobRequest);
+        return std::make_unique<SemanticBeamSearchExecutor>(this->sqliteDB, this->perfDB, jobRequest);
     } else if (AGENT_PLAN == jobRequest.getJobType()) {
-        return new AgentPlanExecutor(this->sqliteDB, this->perfDB, jobRequest);
+        return std::make_unique<AgentPlanExecutor>(this->sqliteDB, this->perfDB, jobRequest);
     }
     return nullptr;
 }
