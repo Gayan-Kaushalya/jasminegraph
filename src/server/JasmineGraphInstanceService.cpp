@@ -560,7 +560,7 @@ long countLocalTriangles(
                          " Partition " + partitionId);
 
     loadTriangleStores(graphId, partitionId, graphDBMapLocalStores, graphDBMapCentralStores,
-                       graphDBMapDuplicateCentralStores);
+                       graphDBMapDuplicateCentralStores, threadPriority);
 
     std::string graphIdentifier = graphId + "_" + partitionId;
     std::string centralGraphIdentifier = graphId + "_centralstore_" + partitionId;
@@ -592,7 +592,7 @@ long countLocalSheepTriangles(
                          " Partition " + partitionId);
 
     loadTriangleStores(graphId, partitionId, graphDBMapLocalStores, graphDBMapCentralStores,
-                       graphDBMapDuplicateCentralStores);
+                       graphDBMapDuplicateCentralStores, threadPriority);
 
     std::string graphIdentifier = graphId + "_" + partitionId;
     std::string centralGraphIdentifier = graphId + "_centralstore_" + partitionId;
@@ -1335,7 +1335,7 @@ bool JasmineGraphInstanceService::duplicateCentralStore(int thisWorkerPort, int 
     return true;
 }
 
-map<long, long> calculateOutDegreeDist(string graphID, string partitionID, int serverPort,
+map<long, long> calculateOutDegreeDist(const string& graphID, const string& partitionID, int serverPort,
                                        std::map<std::string, JasmineGraphHashMapLocalStore, std::less<>>& graphDBMapLocalStores,
                                        std::map<std::string, JasmineGraphHashMapCentralStore, std::less<>>& graphDBMapCentralStores,
                                        std::vector<string>& workerSockets) {
@@ -1359,7 +1359,7 @@ map<long, long> calculateOutDegreeDist(string graphID, string partitionID, int s
 }
 
 map<long, long> calculateLocalOutDegreeDist(
-    string graphID, string partitionID, std::map<std::string, JasmineGraphHashMapLocalStore, std::less<>>& graphDBMapLocalStores,
+    const string& graphID, const string& partitionID, std::map<std::string, JasmineGraphHashMapLocalStore, std::less<>>& graphDBMapLocalStores,
     std::map<std::string, JasmineGraphHashMapCentralStore, std::less<>>& graphDBMapCentralStores) {
     auto t_start = std::chrono::high_resolution_clock::now();
 
@@ -1406,8 +1406,8 @@ map<long, long> calculateLocalOutDegreeDist(
 }
 
 map<long, long> calculateLocalInDegreeDist(
-    string graphID, string partitionID, std::map<std::string, JasmineGraphHashMapLocalStore, std::less<>>& graphDBMapLocalStores,
-    std::map<std::string, JasmineGraphHashMapCentralStore, std::less<>>& graphDBMapCentralStores) {
+    const string& graphID, const string& partitionID, std::map<std::string, JasmineGraphHashMapLocalStore, std::less<>>& graphDBMapLocalStores,
+    const std::map<std::string, JasmineGraphHashMapCentralStore, std::less<>>& graphDBMapCentralStores) {
     JasmineGraphHashMapLocalStore graphDB;
 
     std::map<std::string, JasmineGraphHashMapLocalStore, std::less<>>::iterator it;
@@ -1424,7 +1424,7 @@ map<long, long> calculateLocalInDegreeDist(
     return degreeDistribution;
 }
 
-map<long, long> calculateInDegreeDist(string graphID, string partitionID, int serverPort,
+map<long, long> calculateInDegreeDist(const string& graphID, const string& partitionID, int serverPort,
                                       std::map<std::string, JasmineGraphHashMapLocalStore, std::less<>>& graphDBMapLocalStores,
                                       std::map<std::string, JasmineGraphHashMapCentralStore, std::less<>>& graphDBMapCentralStores,
                                       std::vector<string>& workerSockets, string workerList) {
