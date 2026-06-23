@@ -9,7 +9,7 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
- */
+**/
 
 #ifndef JASMINEGRAPH_JASMINEGRAPHINSTANCESERVICE_H
 #define JASMINEGRAPH_JASMINEGRAPHINSTANCESERVICE_H
@@ -110,9 +110,16 @@ struct instanceservicesessionargs {
     int connFd;
     int port;
     int dataPort;
+<<<<<<< HEAD
     std::map<std::string, JasmineGraphHashMapLocalStore, std::less<>> *graphDBMapLocalStores;
     std::map<std::string, JasmineGraphHashMapCentralStore, std::less<>> *graphDBMapCentralStores;
     std::map<std::string, JasmineGraphHashMapDuplicateCentralStore, std::less<>> *graphDBMapDuplicateCentralStores;
+=======
+    string cmd;
+    std::map<std::string, JasmineGraphHashMapLocalStore> *graphDBMapLocalStores;
+    std::map<std::string, JasmineGraphHashMapCentralStore> *graphDBMapCentralStores;
+    std::map<std::string, JasmineGraphHashMapDuplicateCentralStore> *graphDBMapDuplicateCentralStores;
+>>>>>>> master
     std::map<std::string, JasmineGraphIncrementalLocalStore *> *incrementalLocalStore;
 };
 

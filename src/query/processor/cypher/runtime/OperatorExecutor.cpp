@@ -1432,6 +1432,8 @@ struct Row {
         json val1 = getNestedValue(data, sortKey);
         json val2 = getNestedValue(other.data, sortKey);
 
+        if (val1 == val2) return false;
+
         bool result;
         if (val1.is_number_integer() && val2.is_number_integer()) {
             result = val1.get<int>() > val2.get<int>();
@@ -1543,6 +1545,8 @@ void OperatorExecutor::OrderBy(SharedBuffer &buffer, std::string jsonPlan, Graph
         auto cmp = [&](const Row &a, const Row &b) {
             json val1 = a.getNestedValue(a.data, sortKey);
             json val2 = b.getNestedValue(b.data, sortKey);
+
+            if (val1 == val2) return false;
 
             bool result;
             if (val1.is_number_integer() && val2.is_number_integer()) {
