@@ -1637,7 +1637,7 @@ void Utils::assignPartitionToWorker(int graphId, int partitionIndex, string host
         std::string workerSearchQuery =
             "SELECT idworker FROM worker WHERE ip='" + workerHost + "' AND server_port='" + std::to_string(port) + "'";
 
-        std::vector<std::vector<std::pair<std::string, std::string>>> results = sqlite.runSelect(workerSearchQuery);
+        std::vector<std::vector<std::pair<std::string, std::string>>> results = sqlite->runSelect(workerSearchQuery);
 
         if (results.empty()) {
             util_logger.error("Worker not found : " + workerHost);
@@ -1656,7 +1656,8 @@ void Utils::assignPartitionToWorker(int graphId, int partitionIndex, string host
         util_logger.error("Error assigning partition to worker: " + std::string(ex.what()));
     }
 
-    sqlite.finalize();
+    sqlite->finalize();
+    delete sqlite;
     sqliteMutex.unlock();
 }
 

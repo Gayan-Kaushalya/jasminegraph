@@ -111,9 +111,9 @@ struct instanceservicesessionargs {
     int port;
     int dataPort;
     string cmd;
-    std::map<std::string, JasmineGraphHashMapLocalStore> *graphDBMapLocalStores;
-    std::map<std::string, JasmineGraphHashMapCentralStore> *graphDBMapCentralStores;
-    std::map<std::string, JasmineGraphHashMapDuplicateCentralStore> *graphDBMapDuplicateCentralStores;
+    std::map<std::string, JasmineGraphHashMapLocalStore, std::less<>> *graphDBMapLocalStores;
+    std::map<std::string, JasmineGraphHashMapCentralStore, std::less<>> *graphDBMapCentralStores;
+    std::map<std::string, JasmineGraphHashMapDuplicateCentralStore, std::less<>> *graphDBMapDuplicateCentralStores;
     std::map<std::string, JasmineGraphIncrementalLocalStore *> *incrementalLocalStore;
 };
 
