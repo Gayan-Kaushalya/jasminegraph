@@ -1437,7 +1437,7 @@ map<long, long> calculateLocalInDegreeDist(
 
 map<long, long> calculateInDegreeDist(const string& graphID, const string& partitionID, int serverPort,
                                       std::map<std::string, JasmineGraphHashMapLocalStore,
-                                               std::less<>&,
+                                               std::less<>>& graphDBMapLocalStores,
                                       std::map<std::string, JasmineGraphHashMapCentralStore,
                                                std::less<>>& graphDBMapCentralStores,
                                       std::vector<string>& workerSockets, string workerList) {
