@@ -555,14 +555,18 @@ static void loadTriangleStores(
     }
 }
 
-long countLocalTriangles(
+struct TriangleStores {
+    JasmineGraphHashMapLocalStore localStore;
+    JasmineGraphHashMapCentralStore centralStore;
+    JasmineGraphHashMapDuplicateCentralStore duplicateCentralStore;
+};
+
+static TriangleStores getTriangleStores(
     std::string graphId, std::string partitionId,
     std::map<std::string, JasmineGraphHashMapLocalStore, std::less<>> &graphDBMapLocalStores,
     std::map<std::string, JasmineGraphHashMapCentralStore, std::less<>> &graphDBMapCentralStores,
     std::map<std::string, JasmineGraphHashMapDuplicateCentralStore, std::less<>> &graphDBMapDuplicateCentralStores,
     int threadPriority) {
-    OTEL_TRACE_FUNCTION();
-
     instance_logger.info("###INSTANCE### Local Triangle Count : Started: Graph ID " + graphId +
                          " Partition " + partitionId);
 
@@ -573,14 +577,26 @@ long countLocalTriangles(
     std::string centralGraphIdentifier = graphId + "_centralstore_" + partitionId;
     std::string duplicateCentralGraphIdentifier = graphId + "_centralstore_dp_" + partitionId;
 
-    JasmineGraphHashMapLocalStore graphDB = graphDBMapLocalStores[graphIdentifier];
-    JasmineGraphHashMapCentralStore centralGraphDB = graphDBMapCentralStores[centralGraphIdentifier];
-    JasmineGraphHashMapDuplicateCentralStore duplicateCentralGraphDB =
-        graphDBMapDuplicateCentralStores[duplicateCentralGraphIdentifier];
+    return {graphDBMapLocalStores[graphIdentifier],
+            graphDBMapCentralStores[centralGraphIdentifier],
+            graphDBMapDuplicateCentralStores[duplicateCentralGraphIdentifier]};
+}
+
+long countLocalTriangles(
+    std::string graphId, std::string partitionId,
+    std::map<std::string, JasmineGraphHashMapLocalStore, std::less<>> &graphDBMapLocalStores,
+    std::map<std::string, JasmineGraphHashMapCentralStore, std::less<>> &graphDBMapCentralStores,
+    std::map<std::string, JasmineGraphHashMapDuplicateCentralStore, std::less<>> &graphDBMapDuplicateCentralStores,
+    int threadPriority) {
+    OTEL_TRACE_FUNCTION();
+
+    TriangleStores stores = getTriangleStores(graphId, partitionId, graphDBMapLocalStores,
+                                              graphDBMapCentralStores, graphDBMapDuplicateCentralStores,
+                                              threadPriority);
 
     instance_logger.info("###INSTANCE### Using standard Triangles algorithm");
-    long result = Triangles::run(graphDB, centralGraphDB, duplicateCentralGraphDB, graphId, partitionId,
-                                 threadPriority);
+    long result = Triangles::run(stores.localStore, stores.centralStore, stores.duplicateCentralStore,
+                                 graphId, partitionId, threadPriority);
 
     instance_logger.info("###INSTANCE### Local Triangle Count : Completed: Triangles: " + to_string(result));
 
@@ -595,23 +611,13 @@ long countLocalSheepTriangles(
     int threadPriority) {
     OTEL_TRACE_FUNCTION();
 
-    instance_logger.info("###INSTANCE### Local Triangle Count : Started: Graph ID " + graphId +
-                         " Partition " + partitionId);
-
-    loadTriangleStores(graphId, partitionId, graphDBMapLocalStores, graphDBMapCentralStores,
-                       graphDBMapDuplicateCentralStores, threadPriority);
-
-    std::string graphIdentifier = graphId + "_" + partitionId;
-    std::string centralGraphIdentifier = graphId + "_centralstore_" + partitionId;
-    std::string duplicateCentralGraphIdentifier = graphId + "_centralstore_dp_" + partitionId;
-
-    JasmineGraphHashMapLocalStore graphDB = graphDBMapLocalStores[graphIdentifier];
-    JasmineGraphHashMapCentralStore centralGraphDB = graphDBMapCentralStores[centralGraphIdentifier];
-    JasmineGraphHashMapDuplicateCentralStore duplicateCentralGraphDB =
-        graphDBMapDuplicateCentralStores[duplicateCentralGraphIdentifier];
+    TriangleStores stores = getTriangleStores(graphId, partitionId, graphDBMapLocalStores,
+                                              graphDBMapCentralStores, graphDBMapDuplicateCentralStores,
+                                              threadPriority);
 
     instance_logger.info("###INSTANCE### Using SheepTriangles algorithm");
-    long result = SheepTriangles::run(graphDB, centralGraphDB, duplicateCentralGraphDB, graphId, partitionId);
+    long result = SheepTriangles::run(stores.localStore, stores.centralStore, stores.duplicateCentralStore,
+                                      graphId, partitionId);
 
     instance_logger.info("###INSTANCE### Local Triangle Count : Completed: Triangles: " + to_string(result));
 
