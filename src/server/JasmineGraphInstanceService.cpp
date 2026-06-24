@@ -530,8 +530,6 @@ static void loadTriangleStores(
     int threadPriority) {
     OTEL_TRACE_FUNCTION();
 
-    long result;
-
     instance_logger.info("###INSTANCE### Local Triangle Count : Started: Graph ID " + graphId + " Partition " +
                          partitionId);
 
@@ -1439,7 +1437,7 @@ map<long, long> calculateLocalInDegreeDist(
 
 map<long, long> calculateInDegreeDist(const string& graphID, const string& partitionID, int serverPort,
                                       std::map<std::string, JasmineGraphHashMapLocalStore,
-                                               std::less<>>& graphDBMapLocalStores,
+                                               std::less<>&,
                                       std::map<std::string, JasmineGraphHashMapCentralStore,
                                                std::less<>>& graphDBMapCentralStores,
                                       std::vector<string>& workerSockets, string workerList) {
