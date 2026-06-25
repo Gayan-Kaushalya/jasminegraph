@@ -200,7 +200,7 @@ void *uifrontendservicesesion(void *dummyPt) {
             JasmineGraphFrontEnd::constructKGStreamLocalTXTCommand(masterIP, connFd, numberOfPartitions,
                 sqlite, &loop_exit);
         } else if (line.compare(STOP_CONSTRUCT_KG) == 0) {
-            JasmineGraphFrontEnd::stop_graph_streaming(connFd, sqlite, &loop_exit);
+            JasmineGraphFrontEnd::stop_graph_streaming(connFd, &loop_exit);
         } else if (token.compare("UPBYTES") == 0) {
            send_uploaded_bytes(connFd, sqlite, &loop_exit, line);
         } else {

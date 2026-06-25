@@ -289,7 +289,7 @@ void* frontendservicesesion(void* dummyPt) {
             JasmineGraphFrontEnd::constructKGStreamLocalTXTCommand(masterIP, connFd, numberOfPartitions, sqlite,
                                                                &loop_exit);
         } else if (line.compare(STOP_CONSTRUCT_KG) == 0) {
-            JasmineGraphFrontEnd::stop_graph_streaming(connFd, sqlite, &loop_exit);
+            JasmineGraphFrontEnd::stop_graph_streaming(connFd, &loop_exit);
         } else if (line.compare(0, STOP_STREAM_KAFKA.length(), STOP_STREAM_KAFKA) == 0 &&
                    (line.length() == STOP_STREAM_KAFKA.length() ||
                     std::isspace(static_cast<unsigned char>(line[STOP_STREAM_KAFKA.length()])))) {
@@ -4665,7 +4665,7 @@ static void kafka_topics_command(int connFd, SQLiteDBInterface *sqlite, bool *lo
             writeSocketResultOrEmpty(connFd, result, loop_exit_p);
         }
 
-        void JasmineGraphFrontEnd::stop_graph_streaming(int connFd, SQLiteDBInterface *sqlite, bool *loop_exit_p) {
+        void JasmineGraphFrontEnd::stop_graph_streaming(int connFd, bool *loop_exit_p) {
             std::string message1 = "Graph ID?";
             int resultWr = write(connFd, message1.c_str(), message1.length());
             if (resultWr < 0) {
@@ -4885,9 +4885,7 @@ static void sheep_triangles_command(const std::string& masterIP, int conn_fd, SQ
 
     jobScheduler->pushJob(jobDetails);
     JobResponse jobResponse = jobScheduler->getResult(jobDetails);
-    std::string errorMessage = jobResponse.getParameter(Conts::PARAM_KEYS::ERROR_MESSAGE);
-
-    if (!errorMessage.empty()) {
+    if (std::string errorMessage = jobResponse.getParameter(Conts::PARAM_KEYS::ERROR_MESSAGE); !errorMessage.empty()) {
         *loop_exit_p = true;
         writeSocketLine(conn_fd, errorMessage, loop_exit_p);
         return;
