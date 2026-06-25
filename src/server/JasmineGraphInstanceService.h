@@ -129,7 +129,7 @@ class JasmineGraphInstanceService {
     static bool isInstanceCentralStoreExists(std::string graphId, std::string partitionId);
     static bool isInstanceDuplicateCentralStoreExists(std::string graphId, std::string partitionId);
     static void loadLocalStore(
-        std::string graphId, std::string partitionId,
+        const std::string& graphId, const std::string& partitionId,
         std::map<std::string, JasmineGraphHashMapLocalStore, std::less<>> &graphDBMapLocalStores);
     static JasmineGraphIncrementalLocalStore *loadStreamingStore(
         std::string graphId, std::string partitionId,

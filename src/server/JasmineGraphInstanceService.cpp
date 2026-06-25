@@ -669,7 +669,7 @@ JasmineGraphIncrementalLocalStore* JasmineGraphInstanceService::loadStreamingSto
 }
 
 void JasmineGraphInstanceService::loadLocalStore(
-    std::string graphId, std::string partitionId,
+    const std::string& graphId, const std::string& partitionId,
     std::map<std::string, JasmineGraphHashMapLocalStore, std::less<>> &graphDBMapLocalStores) {
     instance_logger.info("###INSTANCE### Loading Local Store : Started");
     std::string graphIdentifier = graphId + "_" + partitionId;

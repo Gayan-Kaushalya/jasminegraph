@@ -1179,8 +1179,8 @@ static bool waitForFileReception(int sockfd, char* data, const std::string& file
         util_logger.debug("Sent: " + JasmineGraphInstanceProtocol::FILE_RECV_CHK);
 
         util_logger.debug("Checking if file is received");
-        std::string response = Utils::read_str_trim_wrapper(sockfd, data, FED_DATA_LENGTH);
-        if (response.compare(JasmineGraphInstanceProtocol::FILE_RECV_WAIT) == 0) {
+        if (std::string response = Utils::read_str_trim_wrapper(sockfd, data, FED_DATA_LENGTH);
+            response.compare(JasmineGraphInstanceProtocol::FILE_RECV_WAIT) == 0) {
             util_logger.debug("Received: " + JasmineGraphInstanceProtocol::FILE_RECV_WAIT);
             util_logger.debug("Checking file status : " + std::to_string(count));
             count++;
@@ -1195,7 +1195,7 @@ static bool waitForFileReception(int sockfd, char* data, const std::string& file
             util_logger.debug("File transfer completed for file : " + filePath);
             return true;
         }
-        count++; // Prevent infinite loop if unexpected response
+        count++;  // Prevent infinite loop if unexpected response
     }
     util_logger.error("File reception timeout for: " + fileName);
     Utils::send_str_wrapper(sockfd, JasmineGraphInstanceProtocol::CLOSE);
@@ -1213,8 +1213,8 @@ static bool waitForBatchUpload(int sockfd, char* data, const std::string& fileNa
         }
         util_logger.debug("Sent: " + JasmineGraphInstanceProtocol::BATCH_UPLOAD_CHK);
 
-        std::string response = Utils::read_str_trim_wrapper(sockfd, data, FED_DATA_LENGTH);
-        if (response.compare(JasmineGraphInstanceProtocol::BATCH_UPLOAD_WAIT) == 0) {
+        if (std::string response = Utils::read_str_trim_wrapper(sockfd, data, FED_DATA_LENGTH);
+            response.compare(JasmineGraphInstanceProtocol::BATCH_UPLOAD_WAIT) == 0) {
             util_logger.debug("Received: " + JasmineGraphInstanceProtocol::BATCH_UPLOAD_WAIT);
             sleep(1);
             continue;
@@ -1223,7 +1223,7 @@ static bool waitForBatchUpload(int sockfd, char* data, const std::string& fileNa
             util_logger.debug("Batch upload completed: " + fileName);
             return true;
         }
-        count++; // Prevent infinite loop if unexpected response
+        count++;  // Prevent infinite loop if unexpected response
     }
     util_logger.error("Batch upload timeout for: " + fileName);
     Utils::send_str_wrapper(sockfd, JasmineGraphInstanceProtocol::CLOSE);
