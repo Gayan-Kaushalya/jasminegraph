@@ -1166,6 +1166,71 @@ std::fstream* Utils::openFile(const string& path, std::ios_base::openmode mode) 
     return new std::fstream(path, mode | std::ios::binary);
 }
 
+static bool waitForFileReception(int sockfd, char* data, const std::string& filePath,
+        const std::string& fileName, int maxRetries) {
+    int count = 0;
+    int sleepMs = 50;
+    while (count < maxRetries) {
+        if (!Utils::send_str_wrapper(sockfd, JasmineGraphInstanceProtocol::FILE_RECV_CHK)) {
+            Utils::send_str_wrapper(sockfd, JasmineGraphInstanceProtocol::CLOSE);
+            close(sockfd);
+            return false;
+        }
+        util_logger.debug("Sent: " + JasmineGraphInstanceProtocol::FILE_RECV_CHK);
+
+        util_logger.debug("Checking if file is received");
+        std::string response = Utils::read_str_trim_wrapper(sockfd, data, FED_DATA_LENGTH);
+        if (response.compare(JasmineGraphInstanceProtocol::FILE_RECV_WAIT) == 0) {
+            util_logger.debug("Received: " + JasmineGraphInstanceProtocol::FILE_RECV_WAIT);
+            util_logger.debug("Checking file status : " + std::to_string(count));
+            count++;
+            std::this_thread::sleep_for(std::chrono::milliseconds(sleepMs));
+            // Exponential backoff up to 1 second
+            if (sleepMs < 1000) {
+                sleepMs = std::min(sleepMs * 2, 1000);
+            }
+            continue;
+        } else if (response.compare(JasmineGraphInstanceProtocol::FILE_ACK) == 0) {
+            util_logger.debug("Received: " + JasmineGraphInstanceProtocol::FILE_ACK);
+            util_logger.debug("File transfer completed for file : " + filePath);
+            return true;
+        }
+        count++; // Prevent infinite loop if unexpected response
+    }
+    util_logger.error("File reception timeout for: " + fileName);
+    Utils::send_str_wrapper(sockfd, JasmineGraphInstanceProtocol::CLOSE);
+    close(sockfd);
+    return false;
+}
+
+static bool waitForBatchUpload(int sockfd, char* data, const std::string& fileName, int maxRetries) {
+    int count = 0;
+    while (count < maxRetries) {
+        if (!Utils::send_str_wrapper(sockfd, JasmineGraphInstanceProtocol::BATCH_UPLOAD_CHK)) {
+            Utils::send_str_wrapper(sockfd, JasmineGraphInstanceProtocol::CLOSE);
+            close(sockfd);
+            return false;
+        }
+        util_logger.debug("Sent: " + JasmineGraphInstanceProtocol::BATCH_UPLOAD_CHK);
+
+        std::string response = Utils::read_str_trim_wrapper(sockfd, data, FED_DATA_LENGTH);
+        if (response.compare(JasmineGraphInstanceProtocol::BATCH_UPLOAD_WAIT) == 0) {
+            util_logger.debug("Received: " + JasmineGraphInstanceProtocol::BATCH_UPLOAD_WAIT);
+            sleep(1);
+            continue;
+        } else if (response.compare(JasmineGraphInstanceProtocol::BATCH_UPLOAD_ACK) == 0) {
+            util_logger.debug("Received: " + JasmineGraphInstanceProtocol::BATCH_UPLOAD_ACK);
+            util_logger.debug("Batch upload completed: " + fileName);
+            return true;
+        }
+        count++; // Prevent infinite loop if unexpected response
+    }
+    util_logger.error("Batch upload timeout for: " + fileName);
+    Utils::send_str_wrapper(sockfd, JasmineGraphInstanceProtocol::CLOSE);
+    close(sockfd);
+    return false;
+}
+
 bool Utils::uploadFileToWorker(std::string host, int port, int dataPort, int graphID, std::string filePath,
                                std::string masterIP, std::string uploadType) {
     util_logger.debug("Host:" + host + " Port:" + to_string(port) + " DPort:" + to_string(dataPort));
@@ -1205,8 +1270,6 @@ bool Utils::uploadFileToWorker(std::string host, int port, int dataPort, int gra
         close(sockfd);
         return false;
     }
-
-
 
     // Optimize TCP socket for file uploads
     int flag = 1;
@@ -1255,75 +1318,16 @@ bool Utils::uploadFileToWorker(std::string host, int port, int dataPort, int gra
     util_logger.debug("Going to send file" + filePath + "/" + fileName + " through file transfer service to worker");
     Utils::sendFileThroughService(host, dataPort, fileName, filePath);
 
-    string response;
-    int count = 0;
     int maxRetries = 300;  // 5 minutes max with exponential backoff
-    int sleepMs = 50;  // Start with 50ms
 
-    // Wait for file reception with exponential backoff
-    while (count < maxRetries) {
-        if (!Utils::send_str_wrapper(sockfd, JasmineGraphInstanceProtocol::FILE_RECV_CHK)) {
-            Utils::send_str_wrapper(sockfd, JasmineGraphInstanceProtocol::CLOSE);
-            close(sockfd);
-            return false;
-        }
-        util_logger.debug("Sent: " + JasmineGraphInstanceProtocol::FILE_RECV_CHK);
-
-        util_logger.debug("Checking if file is received");
-        response = Utils::read_str_trim_wrapper(sockfd, data, FED_DATA_LENGTH);
-        if (response.compare(JasmineGraphInstanceProtocol::FILE_RECV_WAIT) == 0) {
-            util_logger.debug("Received: " + JasmineGraphInstanceProtocol::FILE_RECV_WAIT);
-            util_logger.debug("Checking file status : " + to_string(count));
-            count++;
-            std::this_thread::sleep_for(std::chrono::milliseconds(sleepMs));
-            // Exponential backoff up to 1 second
-            if (sleepMs < 1000) {
-                sleepMs = std::min(sleepMs * 2, 1000);
-            }
-            continue;
-        } else if (response.compare(JasmineGraphInstanceProtocol::FILE_ACK) == 0) {
-            util_logger.debug("Received: " + JasmineGraphInstanceProtocol::FILE_ACK);
-            util_logger.debug("File transfer completed for file : " + filePath);
-            break;
-        }
-    }
-
-    if (count >= maxRetries) {
-        util_logger.error("File reception timeout for: " + fileName);
-        Utils::send_str_wrapper(sockfd, JasmineGraphInstanceProtocol::CLOSE);
-        close(sockfd);
+    if (!waitForFileReception(sockfd, data, filePath, fileName, maxRetries)) {
         return false;
     }
 
-    // Wait for batch upload completion with exponential backoff
-    count = 0;
-    sleepMs = 50;
-    while (count < maxRetries) {
-        if (!Utils::send_str_wrapper(sockfd, JasmineGraphInstanceProtocol::BATCH_UPLOAD_CHK)) {
-            Utils::send_str_wrapper(sockfd, JasmineGraphInstanceProtocol::CLOSE);
-            close(sockfd);
-            return false;
-        }
-        util_logger.debug("Sent: " + JasmineGraphInstanceProtocol::BATCH_UPLOAD_CHK);
-
-        response = Utils::read_str_trim_wrapper(sockfd, data, FED_DATA_LENGTH);
-        if (response.compare(JasmineGraphInstanceProtocol::BATCH_UPLOAD_WAIT) == 0) {
-            util_logger.debug("Received: " + JasmineGraphInstanceProtocol::BATCH_UPLOAD_WAIT);
-            sleep(1);
-            continue;
-        } else if (response.compare(JasmineGraphInstanceProtocol::BATCH_UPLOAD_ACK) == 0) {
-            util_logger.debug("Received: " + JasmineGraphInstanceProtocol::BATCH_UPLOAD_ACK);
-            util_logger.debug("Batch upload completed: " + fileName);
-            break;
-        }
-    }
-
-    if (count >= maxRetries) {
-        util_logger.error("Batch upload timeout for: " + fileName);
-        Utils::send_str_wrapper(sockfd, JasmineGraphInstanceProtocol::CLOSE);
-        close(sockfd);
+    if (!waitForBatchUpload(sockfd, data, fileName, maxRetries)) {
         return false;
     }
+
     Utils::send_str_wrapper(sockfd, JasmineGraphInstanceProtocol::CLOSE);
     close(sockfd);
     return true;
