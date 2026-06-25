@@ -114,9 +114,5 @@ void filter_partitions(std::map<std::string, std::vector<std::string>, std::less
                        SQLiteDBInterface *sqlite, const std::string &graphId);
 
 // Shared synchronization primitives and state
-extern std::mutex processStatusMutex;
-extern std::mutex responseVectorMutex;
-extern bool isStatCollect;
-extern time_t last_exec_time;
 
 #endif  // JASMINEGRAPH_TRIANGLECOUNTEXECUTOR_H
