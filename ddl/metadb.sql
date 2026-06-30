@@ -16,6 +16,13 @@ create table graph
     feature_count               INTEGER(100),
     is_directed                 boolean default false,
     feature_type                VARCHAR(10),
+    llm_runner_string           VARCHAR(1000),
+    inference_engine            VARCHAR(50),
+    model                       VARCHAR(100),
+    chunk_size_bytes            BIGINT DEFAULT 0,
+    kg_construction_status     VARCHAR(20),
+    hdfs_port                   INTEGER,
+    hdfs_host                   VARCHAR(200),
     uploaded_bytes  BIGINT DEFAULT 0,
     file_size_bytes BIGINT DEFAULT 0
 );
@@ -94,7 +101,7 @@ create table partitioning_algorithm
 INSERT INTO graph_status (idgraph_status, description) VALUES (1, 'LOADING');
 INSERT INTO graph_status (idgraph_status, description) VALUES (2, 'OPERATIONAL');
 INSERT INTO graph_status (idgraph_status, description) VALUES (3, 'DELETED');
-INSERT INTO graph_status (idgraph_status, description) VALUES (4, 'NONOPERATIONAL');
+INSERT INTO graph_status (idgraph_status, description) VALUES (4, 'NON_OPERATIONAL');
 
 INSERT INTO partitioning_algorithm (id_algorithm, algorithm_name) VALUES (1, 'HASH');
 INSERT INTO partitioning_algorithm (id_algorithm, algorithm_name) VALUES (2, 'FENNEL');

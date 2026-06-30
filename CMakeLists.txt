@@ -21,6 +21,7 @@ set(HEADERS globals.h
         src/exception/JasmineGraphException.h
         src/frontend/JasmineGraphFrontEnd.h
         src/frontend/JasmineGraphFrontEndProtocol.h
+        src/frontend/KafkaTopicUtils.h
         src/frontend/core/CoreConstants.h
         src/frontend/core/domain/JobRequest.h
         src/frontend/core/domain/JobResponse.h
@@ -112,6 +113,15 @@ set(HEADERS globals.h
         src/vectorstore/FaissIndex.h
         src/query/processor/nlp/semanticbeamsearch/SemanticBeamSearch.h
         src/frontend/core/executor/impl/SemanticBeamSearchExecutor.h
+        src/localstore/incremental/JasmineGraphIncrementalLocalStore.cpp
+        src/frontend/core/executor/impl/AgentPlanExecutor.h
+        src/rag/agent/Agent.h
+        src/rag/agent/Planner.h
+        src/rag/agent/AgentProtocol.h
+        src/rag/agent/PlanTypes.h
+        src/rag/agent/PlanDecoder.h
+        src/rag/agent/Responder.h
+        src/rag/util/LLMUtils.h
 
 
 )
@@ -123,6 +133,7 @@ set(SOURCES src/backend/JasmineGraphBackend.cpp
         src/exception/JasmineGraphException.cpp
         src/frontend/JasmineGraphFrontEnd.cpp
         src/frontend/JasmineGraphFrontEndProtocol.cpp
+        src/frontend/KafkaTopicUtils.cpp
         src/frontend/core/CoreConstants.cpp
         src/frontend/core/domain/JobRequest.cpp
         src/frontend/core/domain/JobResponse.cpp
@@ -168,6 +179,7 @@ set(SOURCES src/backend/JasmineGraphBackend.cpp
         src/util/Utils.cpp
         src/util/kafka/KafkaCC.cpp
         src/util/kafka/StreamHandler.cpp
+        src/util/kafka/StreamRegistry.cpp
         src/util/kafka/InstanceStreamHandler.cpp
         src/util/logger/Logger.cpp
         src/util/scheduler/SchedulerService.cpp
@@ -218,6 +230,14 @@ set(SOURCES src/backend/JasmineGraphBackend.cpp
         src/frontend/core/executor/impl/SemanticBeamSearchExecutor.cpp
         src/knowledgegraph/construction/VLLMTupleStreamer.cpp
         src/knowledgegraph/construction/TupleStreamer.cpp
+        src/localstore/incremental/JasmineGraphIncrementalLocalStore.cpp
+        src/frontend/core/executor/impl/AgentPlanExecutor.cpp
+        src/rag/agent/Agent.cpp
+        src/rag/agent/Planner.cpp
+        src/rag/agent/AgentProtocol.cpp
+        src/rag/agent/PlanDecoder.cpp
+        src/rag/agent/Responder.cpp
+        src/rag/util/LLMUtils.cpp
 
 
 
@@ -233,11 +253,15 @@ file(GLOB GENERATED_SRC /home/ubuntu/software/antlr/*.cpp)
 if(NOT GENERATED_SRC)
     message(WARNING "No ANTLR generated files found in /home/ubuntu/software/antlr/")
     set(GENERATED_SRC ""
+            src/frontend/JasmineGraphFrontEnd.cpp
+            src/localstore/incremental/JasmineGraphIncrementalLocalStore.cpp
             src/frontend/JasmineGraphFrontEnd.cpp)
 endif()
 
-add_library(JasmineGraphLib ${HEADERS} ${SOURCES} ${GENERATED_SRC})
-add_executable(JasmineGraph main.h main.cpp)
+add_library(JasmineGraphLib ${HEADERS} ${SOURCES} ${GENERATED_SRC}
+        src/localstore/incremental/JasmineGraphIncrementalLocalStore.cpp)
+add_executable(JasmineGraph main.h main.cpp
+        src/localstore/incremental/JasmineGraphIncrementalLocalStore.cpp)
 
 target_compile_definitions(JasmineGraphLib PUBLIC ROOT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/")
 

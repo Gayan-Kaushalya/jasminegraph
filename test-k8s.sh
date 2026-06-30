@@ -25,7 +25,7 @@ RUN_LOG="${LOG_DIR}/run_master.log"
 MASTER_LOG="${LOG_DIR}/master.log"
 TEST_LOG="${LOG_DIR}/test.log"
 WORKER_LOG_DIR="/tmp/jasminegraph"
-rm -rf "${WORKER_LOG_DIR}"
+rm -rf "${WORKER_LOG_DIR}" &>/dev/null || sudo rm -rf "${WORKER_LOG_DIR}" &>/dev/null || true
 mkdir -p "${WORKER_LOG_DIR}"
 
 MASTER_LOG_PID=""
@@ -109,6 +109,9 @@ ready_hdfs() {
 
     echo "Updated hdfs_cnf.txt:"
     cat $HDFS_CONF_FILE
+
+    echo "Waiting for JasmineGraph Master pod to be running..."
+    kubectl wait --for=condition=Ready pod -l type=master,service=jasminegraph --timeout=300s
     MASTER_POD=$(kubectl get pods | grep jasminegraph-master | awk '{print $1}')
 
     kubectl cp "${TEST_ROOT}/env_init/config/hdfs/hdfs_config.txt" ${MASTER_POD}:/var/tmp/config/hdfs_config.txt
@@ -145,7 +148,6 @@ ready_hdfs() {
     LOCAL_DIRECTORY="/var/tmp/data/"
     LOCAL_FILE_PATH="${LOCAL_DIRECTORY}${FILE_NAME}"
     HDFS_DIRECTORY="/home/"
-    HDFS_FILE_PATH="${HDFS_DIRECTORY}${FILE_NAME}"
 
     echo "Ensuring local directory exists..."
     mkdir -p "${LOCAL_DIRECTORY}" || {
@@ -167,25 +169,22 @@ ready_hdfs() {
     fi
     echo "Namenode container found: ${NAMENODE_CONTAINER}"
 
-    docker exec -i "${NAMENODE_CONTAINER}" mkdir -p "${LOCAL_DIRECTORY}"
-
-    echo "Copying file to HDFS Namenode container..."
-    docker cp "${LOCAL_FILE_PATH}" "${NAMENODE_CONTAINER}:${LOCAL_FILE_PATH}" || {
-        echo "Error copying file to Namenode container."
-        return 1
-    }
-
-    echo "Uploading file to HDFS..."
+    # Create the HDFS /home directory and grant write permissions
+    # (sdhdfs will write graph data here during integration tests)
     docker exec -i "${NAMENODE_CONTAINER}" hdfs dfs -mkdir -p "${HDFS_DIRECTORY}" || {
         echo "Error creating HDFS directory."
         return 1
     }
-    docker exec -i "${NAMENODE_CONTAINER}" hdfs dfs -put -f "${LOCAL_FILE_PATH}" "${HDFS_FILE_PATH}" || {
-        echo "Error uploading file to HDFS."
+    docker exec -i "${NAMENODE_CONTAINER}" hdfs dfs -chmod 777 "${HDFS_DIRECTORY}" || {
+        echo "Error setting permissions on HDFS directory." >&2
         return 1
     }
+    echo "HDFS directory ${HDFS_DIRECTORY} created with write permissions."
 
-    echo "File successfully uploaded to HDFS at ${HDFS_FILE_PATH}"
+    docker exec -i "${NAMENODE_CONTAINER}" mkdir -p "${LOCAL_DIRECTORY}" || {
+        echo "Error creating ${LOCAL_DIRECTORY} in Namenode container." >&2
+        return 1
+    }
 
     CUSTOM_GRAPH_FILE="graph_with_properties.txt"
     CUSTOM_GRAPH_LOCAL_PATH="${LOCAL_DIRECTORY}${CUSTOM_GRAPH_FILE}"
@@ -297,7 +296,8 @@ echo '------------------ services -----------------------------------'
 kubectl get services -o wide
 echo
 
-timeout "$TIMEOUT_SECONDS" python3 -u "${TEST_ROOT}/test-k8s.py" "$masterIP" |& tee "$TEST_LOG"
+JASMINEGRAPH_ENABLE_STREAMING_TEST="${JASMINEGRAPH_ENABLE_STREAMING_TEST:-0}" \
+    timeout "$TIMEOUT_SECONDS" python3 -u "${TEST_ROOT}/test-k8s.py" "$masterIP" |& tee "$TEST_LOG"
 exit_code="${PIPESTATUS[0]}"
 
 set +ex

@@ -15,8 +15,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "./Partition.h"
 #include "../../metadb/SQLiteDBInterface.h"
+#include "./Partition.h"
 
 typedef std::vector<std::pair<std::string, long>> partitionedEdge;
 namespace spt {  // spt : Streaming Partitioner
@@ -46,19 +46,20 @@ class Partitioner {
     bool isDirect;
     spt::Algorithms algorithmInUse;
     SQLiteDBInterface *sqlite;
+    bool isDirected;
+
     std::unordered_map<std::string, std::vector<int>> vertexNeighborCounts;
     std::unordered_map<std::string, int> vertexPartitionAssignment;
 
  public:
     Partitioner(int numberOfPartitions, int graphID, spt::Algorithms alog, SQLiteDBInterface* sqlite, bool isDirect)
-            : numberOfPartitions(numberOfPartitions), graphID(graphID), algorithmInUse(alog), sqlite(sqlite) {
+            : numberOfPartitions(numberOfPartitions), graphID(graphID), algorithmInUse(alog), sqlite(sqlite),
+    isDirect(isDirect) {
         for (size_t i = 0; i < numberOfPartitions; i++) {
             this->partitions.push_back(Partition(i, numberOfPartitions));
         };
     };
     void printStats();
-    long getTotalVertices();
-    void setAlgorithm(std::string algo);
     partitionedEdge addEdge(std::pair<std::string, std::string> edge);
     partitionedEdge hashPartitioning(std::pair<std::string, std::string> edge);
     partitionedEdge fennelPartitioning(std::pair<std::string, std::string> edge);

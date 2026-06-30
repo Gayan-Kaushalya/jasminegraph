@@ -244,6 +244,9 @@ void CypherQueryExecutor::execute() {
                         cypher_logger.error("Missing key in val2 for comparison: " + Operator::aggregateKey);
                         return false;
                     }
+
+                    if (*val1 == *val2) return false;
+
                     bool result;
                     if (val1->is_number_integer() && val2->is_number_integer()) {
                         result = val1->get<int>() > val2->get<int>();

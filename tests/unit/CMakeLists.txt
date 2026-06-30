@@ -4,10 +4,12 @@ project(JasmineGraphUnitTest)
 set(SOURCES
         main.cpp
         util/Utils_test.cpp
+        util/KafkaTopicUtils_test.cpp
         k8s/K8sInterface_test.cpp
         k8s/K8sWorkerController_test.cpp
         metadb/SQLiteDBInterface_test.cpp
         performancedb/PerformanceSQLiteDBInterface_test.cpp
+        kafka/StreamRegistry_test.cpp
         query/ThreadSafeBuffer_test.cpp
         query/IntraPartitionParallelExecutor_test.cpp)
 
@@ -21,5 +23,3 @@ target_compile_definitions(${PROJECT_NAME} PUBLIC DISABLE_OPENTELEMETRY)
 target_compile_definitions(JasmineGraphLib PUBLIC DISABLE_OPENTELEMETRY)
 
 add_test(NAME ${PROJECT_NAME} COMMAND ${PROJECT_NAME})
-
-
