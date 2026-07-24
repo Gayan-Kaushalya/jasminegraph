@@ -2663,7 +2663,7 @@ bool JasmineGraphFrontEnd::constructKGStreamHDFSCommand(std::string masterIP, in
     }
 
     std::string url =
-        "https://" + hdfsServerIp + ":9870/webhdfs/v1/?op=GETHOMEDIRECTORY";
+        "http://" + hdfsServerIp + ":9870/webhdfs/v1/?op=GETHOMEDIRECTORY";
 
     long http_code = 0;
 
