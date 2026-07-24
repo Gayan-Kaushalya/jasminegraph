@@ -102,17 +102,11 @@ size_t OllamaTupleStreamer::StreamCallback(char* ptr, size_t size, size_t nmemb,
 
               try {
                 auto tuple = json::parse(ctx->current_tuple);
-                  if (!tuple.is_array() || tuple.size() != 5) {
-                      ollama_tuple_streamer_logger.error(
-                          "Invalid tuple size detected. Retrying entire chunk.");
-
-                      ctx->isSuccess = false;
-                      ctx->retryChunk = true;
-                      ctx->retryChunk = true;
-                      ctx->retryReason = "Tuple size less than 5. Tuple size should be 5 or more.";
-                      return 0;   // IMMEDIATE ABORT of curl_easy_perform
-                  }
-                 if (tuple.is_array()) {
+                if (!tuple.is_array() || tuple.size() < 5) {
+                  ollama_tuple_streamer_logger.error(
+                      "Skipping malformed tuple (needs >= 5 elements): " +
+                      ctx->current_tuple);
+                } else {
                   std::string subject = tuple[0].get<std::string>();
                   std::string predicate = tuple[1].get<std::string>();
                   std::string object = tuple[2].get<std::string>();
