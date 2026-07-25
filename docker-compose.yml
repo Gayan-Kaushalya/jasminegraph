@@ -234,10 +234,5 @@ networks:
     ipam:
       config:
         - subnet: 172.28.5.0/24
-<<<<<<< HEAD
           ip_range: 172.28.5.128/25
           gateway: 172.28.5.1
-=======
-          ip_range: 172.28.5.0/24
-          gateway: 172.28.5.1
->>>>>>> 87c0d279 (Add HDFS and Ollama services to compose)
