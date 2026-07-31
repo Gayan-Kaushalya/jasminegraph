@@ -168,6 +168,9 @@ set(SOURCES src/backend/JasmineGraphBackend.cpp
         src/query/algorithms/bfs/HistoryBFS.cpp
         src/query/algorithms/triangles/Triangles.cpp
         src/query/algorithms/triangles/StreamingTriangles.cpp
+        src/query/algorithms/triangles/HistoryTriangles.cpp
+        src/query/algorithms/pagerank/HistoryPageRank.cpp
+        src/query/algorithms/triangles/SheepTriangles.cpp
         src/query/processor/cypher/astbuilder/ASTBuilder.cpp
         src/query/processor/cypher/astbuilder/ASTInternalNode.cpp
         src/query/processor/cypher/astbuilder/ASTLeafNoValue.cpp
