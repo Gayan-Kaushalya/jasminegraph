@@ -85,6 +85,8 @@ static void triangles_command(const std::string &masterIP,
     JobScheduler *jobScheduler, bool *loop_exit_p, const std::string &command);
 static void sheep_triangles_command(const std::string &masterIP,
     int conn_fd, SQLiteDBInterface *sqlite, PerformanceSQLiteDBInterface *perfSqlite,
+static void triangles_command(std::string masterIP,
+    int connFd, SQLiteDBInterface *sqlite, PerformanceSQLiteDBInterface *perfSqlite,
     JobScheduler *jobScheduler, bool *loop_exit_p, std::string command);
 static void get_degree_command(int connFd, std::string command, int numberOfPartition,
                                std::string type, bool *loop_exit_p);
@@ -127,7 +129,7 @@ void *uifrontendservicesesion(void *dummyPt) {
         return NULL;
     }
 
-    char data[FRONTEND_DATA_LENGTH + 1];
+    std::string data(FRONTEND_DATA_LENGTH + 1, '\0');
     //  Initiate Thread
     thread input_stream_handler;
     std::string partitionCount = Utils::getJasmineGraphProperty("org.jasminegraph.server.npartitions");
@@ -143,7 +145,7 @@ void *uifrontendservicesesion(void *dummyPt) {
     int failCnt = 0;
     while (!loop_exit) {
         ui_frontend_logger.info("reading");
-        std::string line = JasmineGraphFrontEndCommon::readAndProcessInput(connFd, data, failCnt);
+        std::string line = JasmineGraphFrontEndCommon::readAndProcessInput(connFd, data.data(), failCnt);
         if (line.empty()) {
             break;
         }
@@ -177,8 +179,6 @@ void *uifrontendservicesesion(void *dummyPt) {
             sheep_triangles_command(masterIP, connFd, sqlite, perfSqlite, jobScheduler, &loop_exit, line);
         } else if (token.compare(RMGR) == 0) {
             remove_graph_command(masterIP, connFd, sqlite, &loop_exit, line);
-        } else if (token.compare(TRUNCATE) == 0) {
-            remove_all_graphs_command(masterIP, connFd, sqlite, &loop_exit);
         } else if (token.compare(IN_DEGREE) == 0) {
             get_degree_command(connFd, line, numberOfPartitions, "_idd_",  &loop_exit);
         } else if (token.compare(OUT_DEGREE) == 0) {
@@ -767,9 +767,9 @@ static void add_graph_command(std::string masterIP,
             string reformattedFilePath = partitioner.reformatDataSet(path, newGraphID);
             partitioner.loadDataSet(reformattedFilePath, newGraphID);
             partitioner.constructMetisFormat(Conts::GRAPH_TYPE_NORMAL_REFORMATTED);
-            fullFileList = partitioner.partitioneWithGPMetis(partitionCount);
+            fullFileList = partitioner.partitionWithGPMetis(partitionCount);
         } else {
-            fullFileList = partitioner.partitioneWithGPMetis(partitionCount);
+            fullFileList = partitioner.partitionWithGPMetis(partitionCount);
         }
         ui_frontend_logger.info("Upload done");
         JasmineGraphServer *server = JasmineGraphServer::getInstance();
