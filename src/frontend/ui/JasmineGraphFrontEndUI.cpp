@@ -85,8 +85,6 @@ static void triangles_command(const std::string &masterIP,
     JobScheduler *jobScheduler, bool *loop_exit_p, const std::string &command);
 static void sheep_triangles_command(const std::string &masterIP,
     int conn_fd, SQLiteDBInterface *sqlite, PerformanceSQLiteDBInterface *perfSqlite,
-static void triangles_command(std::string masterIP,
-    int connFd, SQLiteDBInterface *sqlite, PerformanceSQLiteDBInterface *perfSqlite,
     JobScheduler *jobScheduler, bool *loop_exit_p, std::string command);
 static void get_degree_command(int connFd, std::string command, int numberOfPartition,
                                std::string type, bool *loop_exit_p);
