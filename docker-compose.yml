@@ -142,7 +142,7 @@ services:
       - OLLAMA_MAX_LOADED_MODELS=4
       - OLLAMA_VRAM_RECOVERY_TIMEOUT=15
       - OLLAMA_KEEP_ALIVE=30s
-    gpus: all           # remove this line if the host has no NVIDIA GPU / toolkit
+    # Runs on CPU. On a host with an NVIDIA GPU + container toolkit, add: gpus: all
     networks:
       jasminenet:
         ipv4_address: 172.28.5.14
