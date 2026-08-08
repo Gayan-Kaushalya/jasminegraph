@@ -537,7 +537,6 @@ void JasmineGraphServer::startRemoteWorkers(std::vector<int> workerPortsVector, 
             }
         }
     }
-}
 
 bool JasmineGraphServer::spawnNewWorker(string host, string port, string dataPort, string masterHost,
                                         string enableNmon) {

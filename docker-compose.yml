@@ -2,38 +2,47 @@ services:
   jasminegraph:
     image: jasminegraph:latest
     ports:
+      - '7776:7776'
       - '7777:7777'
       - '7778:7778'
     volumes:
       - '/var/run/docker.sock:/var/run/docker.sock:rw'
+      - './conf:/home/ubuntu/software/jasminegraph/conf'
       - './env/databases/metadb:/home/ubuntu/software/jasminegraph/metadb'
       - './env/databases/performancedb:/home/ubuntu/software/jasminegraph/performancedb'
-      - './env/data:/var/tmp/data'
-      - '/tmp/jasminegraph:/tmp/jasminegraph'
+      - '/var/tmp/jasminegraph-localstore:/var/tmp/jasminegraph-localstore'
+      - '/var/tmp/jasminegraph-aggregate:/var/tmp/jasminegraph-aggregate'
       - '/var/tmp/jasminegraph:/var/tmp/jasminegraph'
-      - './conf:/home/ubuntu/software/jasminegraph/conf'
+      - '/tmp:/tmp'
+    command: --MODE 1 --MASTERIP 172.28.5.1 --WORKERS 2 --WORKERIP 172.28.5.1 --ENABLE_NMON false
     networks:
       jasminenet:
         ipv4_address: 172.28.5.7
-    command: --MODE 1 --MASTERIP 172.28.5.1 --WORKERS 2 --WORKERIP 172.28.5.1 --ENABLE_NMON false
     depends_on:
       - prometheus
+      - pushgateway
       - kafka
+      - ollama
+      - namenode
+      - datanode
       - alloy
       - grafana
       - tempo
+
+  # ---------------- Observability ----------------
   prometheus:
     image: prom/prometheus:latest
     ports:
       - 9090:9090
     volumes:
       - './conf/prometheus.yaml:/etc/prometheus/prometheus.yml'
-      - './prometheus_data:/prometheus' 
+      - './prometheus_data:/prometheus'
+    depends_on:
+      - pushgateway
     networks:
       jasminenet:
         ipv4_address: 172.28.5.2
-    depends_on:
-      - pushgateway
+
   pushgateway:
     image: prom/pushgateway
     ports:
@@ -41,6 +50,64 @@ services:
     networks:
       jasminenet:
         ipv4_address: 172.28.5.3
+
+  alloy:
+    image: grafana/alloy:latest
+    ports:
+      - 12345:12345
+    volumes:
+      - ./config.alloy:/etc/alloy/config.alloy
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: run --server.http.listen-addr=0.0.0.0:12345 --storage.path=/var/lib/alloy/data /etc/alloy/config.alloy
+    depends_on:
+      - loki
+    networks:
+      jasminenet:
+        ipv4_address: 172.28.5.4
+
+  loki:
+    image: grafana/loki:latest
+    ports:
+      - '3100:3100'
+    volumes:
+      - ./loki-config.yaml:/etc/loki/local-config.yaml
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      jasminenet:
+        ipv4_address: 172.28.5.5
+
+  grafana:
+    build:
+      context: .
+      dockerfile: Dockerfile.grafana
+    environment:
+      - GF_FEATURE_TOGGLES_ENABLE=grafanaManagedRecordingRules
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_BASIC_ENABLED=false
+      - GF_SECURITY_ALLOW_EMBEDDING=true
+      - GF_SECURITY_X_FRAME_OPTIONS=ALLOWALL
+    ports:
+      - 3001:3000   # host 3001 to avoid clashing with anything on 3000
+    networks:
+      jasminenet:
+        ipv4_address: 172.28.5.6
+
+  tempo:
+    image: grafana/tempo:2.6.1
+    ports:
+      - '3200:3200'
+      - '4317:4317'
+      - '4318:4318'   # OTLP HTTP — silences the "connection refused :4318" trace errors
+      - '14268:14268'
+    volumes:
+      - ./tempo-config.yaml:/etc/tempo.yaml
+    command: -config.file=/etc/tempo.yaml
+    networks:
+      jasminenet:
+        ipv4_address: 172.28.5.9
+
+  # ---------------- Streaming ----------------
   kafka:
     image: apache/kafka:3.9.0
     ports:
@@ -62,67 +129,110 @@ services:
     networks:
       jasminenet:
         ipv4_address: 172.28.5.8
-  alloy:
-    image: grafana/alloy:latest
+
+  # ---------------- LLM / embeddings ----------------
+  ollama:
+    image: ollama/ollama
     ports:
-      - 12345:12345
+      - 11434:11434
     volumes:
-      - ./config.alloy:/etc/alloy/config.alloy
-      - /var/run/docker.sock:/var/run/docker.sock
-    command: run --server.http.listen-addr=0.0.0.0:12345 --storage.path=/var/lib/alloy/data /etc/alloy/config.alloy
-    depends_on:
-      - loki
-    networks:
-      jasminenet:
-        ipv4_address: 172.28.5.4
-  loki:
-    image: grafana/loki:latest
-    ports:
-      - "3100:3100"
-    volumes:
-      - ./loki-config.yaml:/etc/loki/local-config.yaml
-    command: -config.file=/etc/loki/local-config.yaml
-    networks:
-      jasminenet:
-        ipv4_address: 172.28.5.5
-  grafana:
-    build:
-      context: .
-      dockerfile: Dockerfile.grafana
+      - ollama_data:/root/.ollama
     environment:
-      - GF_FEATURE_TOGGLES_ENABLE=grafanaManagedRecordingRules
-      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
-      - GF_AUTH_ANONYMOUS_ENABLED=true
-      - GF_AUTH_BASIC_ENABLED=false
-      - GF_SECURITY_ALLOW_EMBEDDING=true
-      - GF_SECURITY_X_FRAME_OPTIONS=ALLOWALL
-    ports:
-      - 3001:3000
+      - OLLAMA_NUM_PARALLEL=2
+      - OLLAMA_MAX_LOADED_MODELS=4
+      - OLLAMA_VRAM_RECOVERY_TIMEOUT=15
+      - OLLAMA_KEEP_ALIVE=30s
+    # Runs on CPU. On a host with an NVIDIA GPU + container toolkit, add: gpus: all
     networks:
       jasminenet:
-        ipv4_address: 172.28.5.6
-  
-  tempo:
-    image: grafana/tempo:latest
+        ipv4_address: 172.28.5.14
+
+  # ---------------- HDFS ----------------
+  namenode:
+    hostname: namenode
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: hdfs-namenode
+    restart: always
     ports:
-      - "3200:3200"
-      - "4317:4317"
-      - "4318:4318"
-      - "14268:14268"
+      - 9870:9870
+      - 9000:9000
     volumes:
-      - ./tempo-config.yaml:/etc/tempo.yaml
-    command: -config.file=/etc/tempo.yaml
+      - hadoop_namenode:/hadoop/dfs/name
+    environment:
+      - CLUSTER_NAME=test
+      - CORE_CONF_fs_defaultFS=hdfs://172.28.5.10:9000
+    env_file:
+      - tests/integration/env_init/config/hdfs/hadoop.env
     networks:
       jasminenet:
-        ipv4_address: 172.28.5.9
+        ipv4_address: 172.28.5.10   # static: hdfs_config.txt / interactive prompts point here
+
+  datanode:
+    hostname: datanode
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: hdfs-datanode
+    restart: always
+    ports:
+      - '9864:9864'
+      - '50010:50010'
+      - '50020:50020'
+      - '50075:50075'
+    volumes:
+      - hadoop_datanode:/hadoop/dfs/data
+    environment:
+      - SERVICE_PRECONDITION=namenode:9870
+      - HDFS_CONF_dfs_datanode_host_name=172.28.5.11
+      - CORE_CONF_fs_defaultFS=hdfs://172.28.5.10:9000
+    env_file:
+      - tests/integration/env_init/config/hdfs/hadoop.env
+    networks:
+      jasminenet:
+        ipv4_address: 172.28.5.11
+
+  resourcemanager:
+    hostname: resourcemanager
+    image: bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8
+    container_name: hdfs-resourcemanager
+    restart: always
+    ports:
+      - '8088:8088'
+      - '8032:8032'
+    environment:
+      - SERVICE_PRECONDITION=namenode:9000 namenode:9870 datanode:50010
+      - CORE_CONF_fs_defaultFS=hdfs://172.28.5.10:9000
+    env_file:
+      - tests/integration/env_init/config/hdfs/hadoop.env
+    networks:
+      jasminenet:
+        ipv4_address: 172.28.5.12
+
+  nodemanager1:
+    image: bde2020/hadoop-nodemanager:2.0.0-hadoop3.2.1-java8
+    container_name: hdfs-nodemanager
+    restart: always
+    ports:
+      - '8042:8042'
+    environment:
+      - SERVICE_PRECONDITION=namenode:9000 namenode:9870 datanode:9864 resourcemanager:8088
+      - CORE_CONF_fs_defaultFS=hdfs://172.28.5.10:9000
+    env_file:
+      - tests/integration/env_init/config/hdfs/hadoop.env
+    networks:
+      jasminenet:
+        ipv4_address: 172.28.5.13
+
+volumes:
+  hadoop_namenode:
+  hadoop_datanode:
+  ollama_data:
 
 networks:
   jasminenet:
     external: false
-    name: jasminenet
+    name: jasminenet          # explicit -> real docker network name is exactly "jasminenet"
     driver: bridge
     ipam:
       config:
         - subnet: 172.28.5.0/24
-          ip_range: 172.28.5.0/24
+          ip_range: 172.28.5.128/25
           gateway: 172.28.5.1
