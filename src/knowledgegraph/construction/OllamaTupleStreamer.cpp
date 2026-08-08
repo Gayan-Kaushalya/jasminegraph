@@ -102,10 +102,11 @@ size_t OllamaTupleStreamer::StreamCallback(char* ptr, size_t size, size_t nmemb,
 
               try {
                 auto tuple = json::parse(ctx->current_tuple);
-                if (!tuple.is_array() || tuple.size() < 5) {
+                if (!tuple.is_array() || tuple.size() < Conts::TUPLE_SIZE_DEFAULT) {
                   ollama_tuple_streamer_logger.error(
-                      "Skipping malformed tuple (needs >= 5 elements): " +
-                      ctx->current_tuple);
+                      "Skipping malformed tuple (needs >= " +
+                      std::to_string(Conts::TUPLE_SIZE_DEFAULT) +
+                      " elements): " + ctx->current_tuple);
                 } else {
                   std::string subject = tuple[0].get<std::string>();
                   std::string predicate = tuple[1].get<std::string>();
