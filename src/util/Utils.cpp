@@ -900,7 +900,10 @@ int Utils::createDatabaseFromDDL(const char* dbLocation, const char* ddlFileLoca
     sqlite3* tempDatabase;
     int rc = sqlite3_open(dbLocation, &tempDatabase);
     if (rc) {
-        util_logger.error("Cannot create database: " + string(sqlite3_errmsg(tempDatabase)));
+        char cwd[4096];
+        std::string cwdStr = (getcwd(cwd, sizeof(cwd)) != NULL) ? cwd : "unknown";
+        util_logger.error("Cannot create database at " + string(dbLocation) + " (cwd " + cwdStr + "): " +
+                          string(sqlite3_errmsg(tempDatabase)));
         return -1;
     }
 
