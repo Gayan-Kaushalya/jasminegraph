@@ -23,7 +23,9 @@ limitations under the License.
 
 #include <chrono>
 #include <ctime>
+#include <filesystem>
 #include <iomanip>
+#include <system_error>
 #include <regex>
 #include <sstream>
 #include <vector>
@@ -900,8 +902,11 @@ int Utils::createDatabaseFromDDL(const char* dbLocation, const char* ddlFileLoca
     sqlite3* tempDatabase;
     int rc = sqlite3_open(dbLocation, &tempDatabase);
     if (rc) {
-        char cwd[4096];
-        std::string cwdStr = (getcwd(cwd, sizeof(cwd)) != NULL) ? cwd : "unknown";
+        std::error_code cwdError;
+        std::string cwdStr = std::filesystem::current_path(cwdError).string();
+        if (cwdError) {
+            cwdStr = "unknown";
+        }
         util_logger.error("Cannot create database at " + string(dbLocation) + " (cwd " + cwdStr + "): " +
                           string(sqlite3_errmsg(tempDatabase)));
         return -1;
