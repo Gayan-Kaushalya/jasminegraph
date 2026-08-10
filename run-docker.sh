@@ -100,4 +100,3 @@ fi
 # TESTING check, which returns 0 when the condition is false, so a crashed
 # server is reported to Docker/Kubernetes as a successful exit.
 exit "$exit_code"
-
