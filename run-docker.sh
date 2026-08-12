@@ -90,7 +90,13 @@ else
         ./JasmineGraph $PROFILE $MODE $HOST_NAME $MASTERIP $SERVER_PORT $SERVER_DATA_PORT $ENABLE_NMON
     fi
 fi
+exit_code=$?
 
 if [ "$TESTING" = "true" ]; then
     chmod -R go+w /tmp/jasminegraph
 fi
+
+# Propagate JasmineGraph's exit code. Without this the script ends on the
+# TESTING check, which returns 0 when the condition is false, so a crashed
+# server is reported to Docker/Kubernetes as a successful exit.
+exit "$exit_code"
