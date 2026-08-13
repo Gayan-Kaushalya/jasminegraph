@@ -69,8 +69,11 @@ K8sWorkerController *K8sWorkerController::getInstance(std::string masterIp, int 
             instance = new K8sWorkerController(masterIp, numberOfWorkers, metadb);
             try {
                 instance->maxWorkers = stoi(instance->interface->getJasmineGraphConfig("MAX_WORKER_COUNT"));
-            } catch (std::invalid_argument &e) {
-                controller_logger.error("Invalid MAX_WORKER_COUNT value. Defaulted to 4");
+            } catch (const std::logic_error &e) {
+                // Covers invalid_argument and out_of_range from stoi, and any
+                // logic_error raised while reading the value from the config map.
+                controller_logger.error(std::string("Invalid MAX_WORKER_COUNT value (") + e.what() +
+                                        "). Defaulted to 4");
                 instance->maxWorkers = 4;
             }
 

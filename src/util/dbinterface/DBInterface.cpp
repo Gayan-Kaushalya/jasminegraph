@@ -16,6 +16,14 @@ limitations under the License.
 
 Logger interface_logger;
 
+// sqlite3_exec leaves errorMessage untouched for failures raised before the
+// statement runs, most notably SQLITE_MISUSE when the database was never
+// opened. Constructing a std::string from that null pointer throws, so always
+// read the message through this helper.
+static const char *sqlErrorText(const char *errorMessage) {
+    return errorMessage ? errorMessage : "unknown error (database may not be open)";
+}
+
 int DBInterface::finalize() {
     return sqlite3_close(database);
 }
@@ -38,7 +46,7 @@ vector<vector<pair<string, string>>> DBInterface::runSelect(string query) {
     vector<vector<pair<string, string>>> dbResults;
 
     if (sqlite3_exec(database, query.c_str(), callback, &dbResults, &errorMessage) != SQLITE_OK) {
-        interface_logger.error("SQL Error: " + string(errorMessage) + " " + query);
+        interface_logger.error("SQL Error: " + string(sqlErrorText(errorMessage)) + " " + query);
         sqlite3_free(errorMessage);
     }
     return dbResults;
@@ -50,7 +58,7 @@ int DBInterface::runInsert(std::string query) {
     char *errorMessage = 0;
     int rc = sqlite3_exec(database, query.c_str(), NULL, NULL, &errorMessage);
     if (rc != SQLITE_OK) {
-        interface_logger.error("SQL Error: " + string(errorMessage) + " " + query);
+        interface_logger.error("SQL Error: " + string(sqlErrorText(errorMessage)) + " " + query);
         sqlite3_free(errorMessage);
         return -1;
     }
@@ -60,7 +68,7 @@ int DBInterface::runInsert(std::string query) {
     int rc2 = sqlite3_exec(database, q2.c_str(), callback, &dbResults, &errorMessage);
 
     if (rc2 != SQLITE_OK) {
-        interface_logger.error("SQL Error: " + string(errorMessage) + " " + query);
+        interface_logger.error("SQL Error: " + string(sqlErrorText(errorMessage)) + " " + query);
         sqlite3_free(errorMessage);
         return -1;
     }
@@ -77,7 +85,7 @@ void DBInterface::runInsertNoIDReturn(std::string query) {
     char *errorMessage = 0;
     int rc = sqlite3_exec(database, query.c_str(), NULL, NULL, &errorMessage);
     if (rc != SQLITE_OK) {
-        interface_logger.error("SQL Error: " + string(errorMessage) + " " + query);
+        interface_logger.error("SQL Error: " + string(sqlErrorText(errorMessage)) + " " + query);
         sqlite3_free(errorMessage);
     }
 }
@@ -89,7 +97,7 @@ void DBInterface::runUpdate(std::string query) {
     int rc = sqlite3_exec(database, query.c_str(), NULL, NULL, &errorMessage);
 
     if (rc != SQLITE_OK) {
-        interface_logger.error("SQL Error: " + string(errorMessage) + " " + query);
+        interface_logger.error("SQL Error: " + string(sqlErrorText(errorMessage)) + " " + query);
         sqlite3_free(errorMessage);
     }
 }

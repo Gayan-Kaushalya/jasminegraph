@@ -177,7 +177,7 @@ v1_node_list_t *K8sInterface::getNodes() {
 std::string K8sInterface::loadFromConfig(std::string key) {
     v1_config_map_t *config_map =
         CoreV1API_readNamespacedConfigMap(apiClient, strdup("jasminegraph-config"), namespace_, NULL);
-    if (config_map->metadata->name == NULL) {
+    if (config_map == NULL || config_map->metadata == NULL || config_map->metadata->name == NULL) {
         k8s_logger.error("No jasminegraph-config config map.");
         return "";
     }
@@ -185,10 +185,19 @@ std::string K8sInterface::loadFromConfig(std::string key) {
     listEntry_t *data = NULL;
     list_ForEach(data, config_map->data) {
         auto *pair = static_cast<keyValuePair_t *>(data->data);
+        if (pair == NULL || pair->key == NULL) {
+            k8s_logger.warn("Skipping config map entry with a null key");
+            continue;
+        }
         if (strcmp(pair->key, key.c_str()) == 0) {
+            if (pair->value == NULL) {
+                k8s_logger.error("Config map key " + key + " has a null value");
+                return "";
+            }
             return std::string(static_cast<char *>(pair->value));
         }
     }
+    k8s_logger.warn("Key " + key + " not found in jasminegraph-config config map");
     return "";
 }
 

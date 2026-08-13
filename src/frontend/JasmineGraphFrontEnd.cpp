@@ -4959,8 +4959,14 @@ bool JasmineGraphFrontEnd::constructKGStreamHDFSCommand(std::string masterIP, in
         return false;
     }
 
+    std::string webhdfsScheme =
+        Utils::getJasmineGraphProperty("org.jasminegraph.server.streaming.hdfs.webhdfs.scheme");
+    if (webhdfsScheme.empty()) {
+        webhdfsScheme = "http";
+    }
+
     std::string url =
-        "https://" + hdfsServerIp + ":9870/webhdfs/v1/?op=GETHOMEDIRECTORY";
+        webhdfsScheme + "://" + hdfsServerIp + ":9870/webhdfs/v1/?op=GETHOMEDIRECTORY";
 
     long http_code = 0;
 
