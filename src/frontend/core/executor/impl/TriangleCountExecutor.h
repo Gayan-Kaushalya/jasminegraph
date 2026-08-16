@@ -103,7 +103,7 @@ std::vector<int> reallocate_parts(std::map<int, std::string> &alloc, std::set<in
                                   const std::map<int, std::vector<std::string>> &P_AVAIL);
 
 void scale_up(std::map<std::string, int, std::less<>> &loads,
-              std::map<std::string, std::string, std::less<>> &workers, int copy_cnt);
+              std::map<std::string, std::string, std::less<>> &workers, int copy_count);
 
 int alloc_net_plan(std::map<int, std::string> &alloc, std::vector<int> &parts,
                    std::map<int, std::pair<std::string, std::string>> &transfer,

@@ -222,12 +222,12 @@ std::vector<int> reallocate_parts(std::map<int, string> &alloc, std::set<int> &r
     return copying;
 }
 
-void scale_up(std::map<string, int, std::less<>> &loads, map<string, string, std::less<>> &workers, int copy_cnt) {
+void scale_up(std::map<string, int, std::less<>> &loads, map<string, string, std::less<>> &workers, int copy_count) {
     int curr_load = 0;
     for (auto it = loads.begin(); it != loads.end(); it++) {
         curr_load += it->second;
     }
-    int n_cores = copy_cnt + curr_load - 3 * loads.size();
+    int n_cores = copy_count + curr_load - 3 * loads.size();
     if (n_cores < 0) {
         return;
     }
@@ -1816,7 +1816,7 @@ static std::map<string, std::vector<string>, std::less<>> buildPartitionMap(
 
     if (jasminegraph_profile == PROFILE_K8S) {
         std::unique_ptr<K8sInterface> k8sInterface(new K8sInterface());
-        if (k8sInterface->getJasmineGraphConfig("auto_scaling_enabled") == "true") {
+        if (k8sInterface->getJasmineGraphConfig("AUTO_SCALING_ENABLED") == "true") {
             filter_partitions(partitionMap, sqlite, graphId);
         }
     }

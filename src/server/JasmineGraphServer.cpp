@@ -959,7 +959,7 @@ std::vector<JasmineGraphServer::worker> JasmineGraphServer::getWorkers(size_t np
     unordered_map<string, float> cpu_loads;
     if (jasminegraph_profile == PROFILE_K8S) {
         std::unique_ptr<K8sInterface> k8sInterface(new K8sInterface());
-        if (k8sInterface->getJasmineGraphConfig("scale_on_adgr") != "true") {
+        if (k8sInterface->getJasmineGraphConfig("SCALE_ON_ADGR") != "true") {
             return K8sWorkerController::workerList;
         }
         workerListAll = &(K8sWorkerController::workerList);
