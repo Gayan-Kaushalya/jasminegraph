@@ -1897,7 +1897,7 @@ static int distributeTasksToWorkers(
                 int currentIndex = partitionCount;
                 collector.intermResThread.push_back(0);
 
-                std::map<std::string, std::string, std::less<>> *combWorkerMapPtr = &taskCtx.combinationWorkerMap;
+                std::map<std::string, std::string, std::less<>> *combinationWorkerMapPtr = &taskCtx.combinationWorkerMap;
                 std::unordered_map<long, std::unordered_map<long, std::unordered_set<long>>> *triangleTreePtr =
                     &taskCtx.triangleTree;
                 std::mutex *triangleTreeMutexPtr = &taskCtx.triangleTreeMutex;
@@ -1912,14 +1912,14 @@ static int distributeTasksToWorkers(
 
                 collector.intermThreads.push_back(std::thread([&intermResThreadRef, currentIndex, gId, host, workerPort,
                     workerDataPort, partitionIdInt, mIP, uId, isCompAgg, tPriority,
-                    fileCombs, combWorkerMapPtr, triangleTreePtr, triangleTreeMutexPtr, mTraceCtx]() {
+                    fileCombs, combinationWorkerMapPtr, triangleTreePtr, triangleTreeMutexPtr, mTraceCtx]() {
                         intermResThreadRef[currentIndex] = TriangleCountExecutor::getTriangleCount(gId, host,
                             workerPort, workerDataPort, partitionIdInt, mIP, uId,
-                            isCompAgg, tPriority, fileCombs, combWorkerMapPtr,
+                            isCompAgg, tPriority, fileCombs, combinationWorkerMapPtr,
                             triangleTreePtr, triangleTreeMutexPtr, mTraceCtx);
                 }));
             } else {
-                std::map<std::string, std::string, std::less<>> *combWorkerMapPtr = &taskCtx.combinationWorkerMap;
+                std::map<std::string, std::string, std::less<>> *combinationWorkerMapPtr = &taskCtx.combinationWorkerMap;
                 std::unordered_map<long, std::unordered_map<long, std::unordered_set<long>>> *triangleTreePtr =
                     &taskCtx.triangleTree;
                 std::mutex *triangleTreeMutexPtr = &taskCtx.triangleTreeMutex;
@@ -1933,10 +1933,10 @@ static int distributeTasksToWorkers(
 
                 std::packaged_task<long()> task([gId, host, workerPort, workerDataPort,
                     partitionIdInt, mIP, uId, isCompAgg, tPriority, fileCombs,
-                    combWorkerMapPtr, triangleTreePtr, triangleTreeMutexPtr, mTraceCtx]() {
+                    combinationWorkerMapPtr, triangleTreePtr, triangleTreeMutexPtr, mTraceCtx]() {
                         return TriangleCountExecutor::getTriangleCount(gId, host,
                             workerPort, workerDataPort, partitionIdInt, mIP, uId,
-                            isCompAgg, tPriority, fileCombs, combWorkerMapPtr,
+                            isCompAgg, tPriority, fileCombs, combinationWorkerMapPtr,
                             triangleTreePtr, triangleTreeMutexPtr, mTraceCtx);
                 });
                 collector.intermResFuture.push_back(task.get_future());
