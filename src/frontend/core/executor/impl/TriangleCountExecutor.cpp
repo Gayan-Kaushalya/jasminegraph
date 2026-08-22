@@ -1894,50 +1894,52 @@ static int distributeTasksToWorkers(
             int partitionIdInt = atoi(partitionId.c_str());
 
             if (collector.strategy == ThreadingStrategy::THREAD_BASED) {
-                int currentIndex = partitionCount;
+                int taskIndex = partitionCount;
                 collector.intermResThread.push_back(0);
 
                 std::map<std::string, std::string, std::less<>> *combinationWorkerMapPtr = &taskCtx.combinationWorkerMap;
                 std::unordered_map<long, std::unordered_map<long, std::unordered_set<long>>> *triangleTreePtr =
                     &taskCtx.triangleTree;
                 std::mutex *triangleTreeMutexPtr = &taskCtx.triangleTreeMutex;
-                std::vector<std::vector<string>> fileCombs = taskCtx.fileCombinations;
-                std::string mTraceCtx = taskCtx.masterTraceContext;
-                std::vector<long> &intermResThreadRef = collector.intermResThread;
-                std::string mIP = taskCtx.masterIP;
-                int gId = taskCtx.graphIdInt;
-                int uId = taskCtx.uniqueId;
-                bool isCompAgg = taskCtx.isCompositeAggregation;
-                int tPriority = taskCtx.threadPriority;
+                std::vector<std::vector<string>> fileCombinationsForTask = taskCtx.fileCombinations;
+                std::string masterTraceContextForTask = taskCtx.masterTraceContext;
+                std::vector<long> &threadResultBuffer = collector.intermResThread;
+                std::string masterIp = taskCtx.masterIP;
+                int graphIdForTask = taskCtx.graphIdInt;
+                int uniqueRequestId = taskCtx.uniqueId;
+                bool isCompositeAggregationEnabled = taskCtx.isCompositeAggregation;
+                int workerThreadPriority = taskCtx.threadPriority;
 
-                collector.intermThreads.push_back(std::thread([&intermResThreadRef, currentIndex, gId, host, workerPort,
-                    workerDataPort, partitionIdInt, mIP, uId, isCompAgg, tPriority,
-                    fileCombs, combinationWorkerMapPtr, triangleTreePtr, triangleTreeMutexPtr, mTraceCtx]() {
-                        intermResThreadRef[currentIndex] = TriangleCountExecutor::getTriangleCount(gId, host,
-                            workerPort, workerDataPort, partitionIdInt, mIP, uId,
-                            isCompAgg, tPriority, fileCombs, combinationWorkerMapPtr,
-                            triangleTreePtr, triangleTreeMutexPtr, mTraceCtx);
+                collector.intermThreads.push_back(std::thread([&threadResultBuffer, taskIndex, graphIdForTask, host, workerPort,
+                    workerDataPort, partitionIdInt, masterIp, uniqueRequestId, isCompositeAggregationEnabled,
+                    workerThreadPriority, fileCombinationsForTask, combinationWorkerMapPtr, triangleTreePtr,
+                    triangleTreeMutexPtr, masterTraceContextForTask]() {
+                        threadResultBuffer[taskIndex] = TriangleCountExecutor::getTriangleCount(graphIdForTask, host,
+                            workerPort, workerDataPort, partitionIdInt, masterIp, uniqueRequestId,
+                            isCompositeAggregationEnabled, workerThreadPriority, fileCombinationsForTask,
+                            combinationWorkerMapPtr, triangleTreePtr, triangleTreeMutexPtr, masterTraceContextForTask);
                 }));
             } else {
                 std::map<std::string, std::string, std::less<>> *combinationWorkerMapPtr = &taskCtx.combinationWorkerMap;
                 std::unordered_map<long, std::unordered_map<long, std::unordered_set<long>>> *triangleTreePtr =
                     &taskCtx.triangleTree;
                 std::mutex *triangleTreeMutexPtr = &taskCtx.triangleTreeMutex;
-                std::vector<std::vector<string>> fileCombs = taskCtx.fileCombinations;
-                std::string mTraceCtx = taskCtx.masterTraceContext;
-                std::string mIP = taskCtx.masterIP;
-                int gId = taskCtx.graphIdInt;
-                int uId = taskCtx.uniqueId;
-                bool isCompAgg = taskCtx.isCompositeAggregation;
-                int tPriority = taskCtx.threadPriority;
+                std::vector<std::vector<string>> fileCombinationsForTask = taskCtx.fileCombinations;
+                std::string masterTraceContextForTask = taskCtx.masterTraceContext;
+                std::string masterIp = taskCtx.masterIP;
+                int graphIdForTask = taskCtx.graphIdInt;
+                int uniqueRequestId = taskCtx.uniqueId;
+                bool isCompositeAggregationEnabled = taskCtx.isCompositeAggregation;
+                int workerThreadPriority = taskCtx.threadPriority;
 
-                std::packaged_task<long()> task([gId, host, workerPort, workerDataPort,
-                    partitionIdInt, mIP, uId, isCompAgg, tPriority, fileCombs,
-                    combinationWorkerMapPtr, triangleTreePtr, triangleTreeMutexPtr, mTraceCtx]() {
-                        return TriangleCountExecutor::getTriangleCount(gId, host,
-                            workerPort, workerDataPort, partitionIdInt, mIP, uId,
-                            isCompAgg, tPriority, fileCombs, combinationWorkerMapPtr,
-                            triangleTreePtr, triangleTreeMutexPtr, mTraceCtx);
+                std::packaged_task<long()> task([graphIdForTask, host, workerPort, workerDataPort,
+                    partitionIdInt, masterIp, uniqueRequestId, isCompositeAggregationEnabled, workerThreadPriority,
+                    fileCombinationsForTask, combinationWorkerMapPtr, triangleTreePtr, triangleTreeMutexPtr,
+                    masterTraceContextForTask]() {
+                        return TriangleCountExecutor::getTriangleCount(graphIdForTask, host,
+                            workerPort, workerDataPort, partitionIdInt, masterIp, uniqueRequestId,
+                            isCompositeAggregationEnabled, workerThreadPriority, fileCombinationsForTask,
+                            combinationWorkerMapPtr, triangleTreePtr, triangleTreeMutexPtr, masterTraceContextForTask);
                 });
                 collector.intermResFuture.push_back(task.get_future());
                 collector.intermThreads.push_back(std::thread(std::move(task)));
