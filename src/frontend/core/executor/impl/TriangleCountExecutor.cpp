@@ -489,7 +489,9 @@ long TriangleCountExecutor::getTriangleCount(
     std::unordered_map<long, std::unordered_map<long, std::unordered_set<long>>> *triangleTree_p,
     std::mutex *triangleTreeMutex_p, const std::string& masterTraceContext) {
 
-    OTEL_TRACE_OPERATION("worker_communication_" + host + "_partition_" + std::to_string(partitionId));
+    OTEL_TRACE_OPERATION(OTelTraceOperations::WORKER_COMMUNICATION + host +
+                         OTelTraceOperations::PARTITION +
+                         std::to_string(partitionId));
 
     int sockfd;
     std::string data(INSTANCE_DATA_LENGTH + 1, '\0');
@@ -1893,7 +1895,9 @@ static int distributeTasksToWorkers(
             string partitionId = *partitionIterator;
             triangleCount_logger.info("> partition" + partitionId);
             collector.workerTaskInfo.emplace_back(workerID, partitionId, host);
-            OTEL_TRACE_OPERATION("distribute_to_worker_" + workerID + "_partition_" + partitionId);
+            OTEL_TRACE_OPERATION(OTelTraceOperations::DISTRIBUTE_TO_WORKER + workerID +
+                                 OTelTraceOperations::PARTITION +
+                                 partitionId);
             int partitionIdInt = atoi(partitionId.c_str());
 
             if (collector.strategy == ThreadingStrategy::THREAD_BASED) {
@@ -2005,7 +2009,9 @@ static long gatherWorkerResults(
     if (strategy == ThreadingStrategy::THREAD_BASED) {
         for (auto &intermThread : intermThreads) {
             const auto& [workerID, partitionId, host] = workerTaskInfo[taskIndex];
-            OTEL_TRACE_OPERATION("wait_for_worker_" + workerID + "_partition_" + partitionId + "_on_" + host);
+            OTEL_TRACE_OPERATION(OTelTraceOperations::WAIT_FOR_WORKER + workerID +
+                                 OTelTraceOperations::PARTITION + partitionId +
+                                 OTelTraceOperations::ON + host);
             logger.info("Waiting for result from worker_" + workerID + " partition_" + partitionId +
                         " host_" + host + " uuid=" + to_string(uniqueId));
 
@@ -2016,20 +2022,24 @@ static long gatherWorkerResults(
             long worker_result = intermResThread[taskIndex];
             logger.info("Received result " + std::to_string(worker_result) + " from worker_" +
                         workerID + " partition_" + partitionId);
-            OTEL_TRACE_OPERATION("aggregate_result_worker_" + workerID + "_partition_" + partitionId);
+            OTEL_TRACE_OPERATION(OTelTraceOperations::AGGREGATE_RESULT_WORKER + workerID +
+                                 OTelTraceOperations::PARTITION + partitionId);
             totalResult += worker_result;
             taskIndex++;
         }
     } else {
         for (auto &&futureCall : intermResFuture) {
             const auto& [workerID, partitionId, host] = workerTaskInfo[taskIndex];
-            OTEL_TRACE_OPERATION("wait_for_worker_" + workerID + "_partition_" + partitionId + "_on_" + host);
+            OTEL_TRACE_OPERATION(OTelTraceOperations::WAIT_FOR_WORKER + workerID +
+                                 OTelTraceOperations::PARTITION + partitionId +
+                                 OTelTraceOperations::ON + host);
             logger.info("Waiting for result from worker_" + workerID + " partition_" + partitionId +
                         " host_" + host + " uuid=" + to_string(uniqueId));
             long worker_result = futureCall.get();
             logger.info("Received result " + std::to_string(worker_result) + " from worker_" +
                         workerID + " partition_" + partitionId);
-            OTEL_TRACE_OPERATION("aggregate_result_worker_" + workerID + "_partition_" + partitionId);
+            OTEL_TRACE_OPERATION(OTelTraceOperations::AGGREGATE_RESULT_WORKER + workerID +
+                                 OTelTraceOperations::PARTITION + partitionId);
             totalResult += worker_result;
             taskIndex++;
         }
@@ -2167,18 +2177,18 @@ void TriangleCountExecutor::executeTriangleCount(SQLiteDBInterface *sqlite, Perf
     lock.unlock();
 
     {
-        OTEL_TRACE_OPERATION("collect_worker_results");
+        OTEL_TRACE_OPERATION(OTelTraceOperations::COLLECT_WORKER_RESULTS);
         result += gatherWorkerResults(strategy, uniqueId, workerTaskInfo, intermThreads, intermResThread,
             intermResFuture, logger);
 
-        OTEL_TRACE_OPERATION("cleanup_worker_data_structures");
+        OTEL_TRACE_OPERATION(OTelTraceOperations::CLEANUP_WORKER_DATA_STRUCTURES);
         triangleTree.clear();
         combinationWorkerMap.clear();
     }
 
     if (!isCompositeAggregation) {
         OpenTelemetryUtil::receiveAndSetTraceContext(masterTraceContext, "central store aggregation");
-        OTEL_TRACE_OPERATION("central_store_aggregation");
+        OTEL_TRACE_OPERATION(OTelTraceOperations::CENTRAL_STORE_AGGREGATION);
         long aggregatedTriangleCount = aggregateCentralStoreTriangles(sqlite, graphId, masterIP,
                                                                       threadPriority, partitionMap);
         result += aggregatedTriangleCount;
