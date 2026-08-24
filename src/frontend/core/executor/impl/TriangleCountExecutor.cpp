@@ -31,6 +31,9 @@ std::mutex responseVectorMutex;
 static std::mutex fileCombinationMutex;
 static std::mutex aggregateWeightMutex;
 
+constexpr time_t SCHEDULER_EXECUTION_GUARD_SECONDS = 8;
+constexpr time_t SCHEDULER_NEXT_EXECUTION_OFFSET_SECONDS = 9;
+
 static time_t last_exec_time = 0;
 
 static string isFileAccessibleToWorker(std::string graphId, std::string partitionId, std::string aggregatorHostName,
@@ -2005,7 +2008,11 @@ static long gatherWorkerResults(
             OTEL_TRACE_OPERATION("wait_for_worker_" + workerID + "_partition_" + partitionId + "_on_" + host);
             logger.info("Waiting for result from worker_" + workerID + " partition_" + partitionId +
                         " host_" + host + " uuid=" + to_string(uniqueId));
-            if (intermThread.joinable()) { intermThread.join(); }
+
+            if (intermThread.joinable()) { 
+                intermThread.join(); 
+            }
+
             long worker_result = intermResThread[taskIndex];
             logger.info("Received result " + std::to_string(worker_result) + " from worker_" +
                         workerID + " partition_" + partitionId);
@@ -2043,8 +2050,8 @@ void TriangleCountExecutor::executeTriangleCount(SQLiteDBInterface *sqlite, Perf
 
     std::unique_lock<std::mutex> lock(schedulerMutex, std::defer_lock);
     lock.lock();
-    if (time_t curr_time = time(nullptr); curr_time < last_exec_time + 8) {
-        time_t sleep_duration = last_exec_time + 9 - curr_time;
+    if (time_t curr_time = time(nullptr); curr_time < last_exec_time + SCHEDULER_EXECUTION_GUARD_SECONDS) {
+        time_t sleep_duration = last_exec_time + SCHEDULER_NEXT_EXECUTION_OFFSET_SECONDS - curr_time;
         last_exec_time = curr_time + sleep_duration;
         lock.unlock();
         std::this_thread::sleep_for(std::chrono::seconds(sleep_duration));
