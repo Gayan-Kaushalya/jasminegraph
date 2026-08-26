@@ -80,61 +80,66 @@ TriangleCountExecutor::TriangleCountExecutor(SQLiteDBInterface *db, PerformanceS
     this->request = jobRequest;
 }
 
-void allocate(int p, string w, std::map<int, string> &alloc, std::set<int> &remain,
-                     std::map<int, std::vector<string>> &p_avail, std::map<string, int, std::less<>> &loads) {
-    alloc[p] = w;
-    remain.erase(p);
-    p_avail.erase(p);
-    loads[w]++;
-    if (loads[w] >= 3) {
-        for (auto it = p_avail.begin(); it != p_avail.end(); it++) {
-            auto &ws = it->second;
-            auto itr = std::find(ws.begin(), ws.end(), w);
-            if (itr != ws.end()) {
-                ws.erase(itr);
+void allocate(int partitionId, string workerId, std::map<int, string> &allocation,
+              std::set<int> &remainingPartitions, std::map<int, std::vector<string>> &availableWorkersByPartition,
+              std::map<string, int, std::less<>> &workerLoads) {
+    allocation[partitionId] = workerId;
+    remainingPartitions.erase(partitionId);
+    availableWorkersByPartition.erase(partitionId);
+    workerLoads[workerId]++;
+    if (workerLoads[workerId] >= 3) {
+        for (auto iterator = availableWorkersByPartition.begin(); iterator != availableWorkersByPartition.end(); iterator++) {
+            auto &partitionWorkers = iterator->second;
+            auto workerIterator = std::find(partitionWorkers.begin(), partitionWorkers.end(), workerId);
+            if (workerIterator != partitionWorkers.end()) {
+                partitionWorkers.erase(workerIterator);
             }
         }
     }
 }
 
-static int get_min_partition(std::set<int> &remain, std::map<int, std::vector<string>> &p_avail) {
-    int p0 = *remain.begin();
+static int get_min_partition(std::set<int> &remainingPartitions,
+                             std::map<int, std::vector<string>> &availableWorkersByPartition) {
+    int selectedPartition = *remainingPartitions.begin();
     size_t minimum = 1000000000;
-    for (auto it = remain.begin(); it != remain.end(); it++) {
-        int partition = *it;
-        auto &workers = p_avail[partition];
+    for (auto iterator = remainingPartitions.begin(); iterator != remainingPartitions.end(); iterator++) {
+        int partition = *iterator;
+        auto &workers = availableWorkersByPartition[partition];
         if (workers.size() > 0 && workers.size() < minimum) {
             minimum = workers.size();
-            p0 = partition;
+            selectedPartition = partition;
         }
     }
-    return p0;
+    return selectedPartition;
 }
 
 static const std::vector<int> LOAD_PREFERENCE = {2, 3, 1, 0};
 
-int alloc_plan(std::map<int, string> &alloc, std::set<int> &remain, std::map<int, std::vector<string>> &p_avail,
-                      std::map<string, int, std::less<>> &loads) {
+int alloc_plan(std::map<int, string> &allocation, std::set<int> &remainingPartitions,
+               std::map<int, std::vector<string>> &availableWorkersByPartition,
+               std::map<string, int, std::less<>> &workerLoads) {
     for (bool done = false; !done;) {
-        string w = "";
+        string workerId = "";
         done = true;
-        int p;
-        for (auto it = remain.begin(); it != remain.end(); it++) {
-            p = *it;
-            if (p_avail[p].size() == 1) {
-                w = p_avail[p][0];
+        int partitionId;
+        for (auto iterator = remainingPartitions.begin(); iterator != remainingPartitions.end(); iterator++) {
+            partitionId = *iterator;
+            if (availableWorkersByPartition[partitionId].size() == 1) {
+                workerId = availableWorkersByPartition[partitionId][0];
                 done = false;
                 break;
             }
         }
-        if (!w.empty()) allocate(p, w, alloc, remain, p_avail, loads);
+        if (!workerId.empty()) {
+            allocate(partitionId, workerId, allocation, remainingPartitions, availableWorkersByPartition, workerLoads);
+        }
     }
-    if (remain.empty()) return 0;
-    int p0 = get_min_partition(remain, p_avail);
-    auto &ws = p_avail[p0];
-    if (ws.empty()) return (int)remain.size();
-    sort(ws.begin(), ws.end(), [&loads](string &w1, string &w2) {
-        return LOAD_PREFERENCE[loads[w1]] > LOAD_PREFERENCE[loads[w2]];
+    if (remainingPartitions.empty()) return 0;
+    int selectedPartition = get_min_partition(remainingPartitions, availableWorkersByPartition);
+    auto &availableWorkers = availableWorkersByPartition[selectedPartition];
+    if (availableWorkers.empty()) return (int)remainingPartitions.size();
+    sort(availableWorkers.begin(), availableWorkers.end(), [&workerLoads](string &firstWorker, string &secondWorker) {
+        return LOAD_PREFERENCE[workerLoads[firstWorker]] > LOAD_PREFERENCE[workerLoads[secondWorker]];
     });  // load=1 goes first and load=3 goes last. The order is 1,0,2,3 for 4 cores.
     struct best_alloc {
         std::map<int, string> alloc;
@@ -142,126 +147,133 @@ int alloc_plan(std::map<int, string> &alloc, std::set<int> &remain, std::map<int
         std::map<int, std::vector<string>> p_avail;
         std::map<string, int, std::less<>> loads;
     };
-    int best_rem = remain.size();
-    struct best_alloc best = {.alloc = alloc, .remain = remain, .p_avail = p_avail, .loads = loads};
-    for (auto it = ws.begin(); it != ws.end(); it++) {
-        string w = *it;
-        auto alloc2 = alloc;      // need copy => do not copy reference
-        auto remain2 = remain;    // need copy => do not copy reference
-        auto p_avail2 = p_avail;  // need copy => do not copy reference
-        auto loads2 = loads;      // need copy => do not copy reference
-        allocate(p0, w, alloc2, remain2, p_avail2, loads2);
-        int rem = alloc_plan(alloc2, remain2, p_avail2, loads2);
-        if (rem == 0) {
-            remain.clear();
-            p_avail.clear();
-            alloc.insert(alloc2.begin(), alloc2.end());
-            loads.insert(loads2.begin(), loads2.end());
+    int bestRemainingPartitions = remainingPartitions.size();
+    struct best_alloc best = {.alloc = allocation, .remain = remainingPartitions,
+                              .p_avail = availableWorkersByPartition, .loads = workerLoads};
+    for (auto iterator = availableWorkers.begin(); iterator != availableWorkers.end(); iterator++) {
+        string workerId = *iterator;
+        auto allocationCopy = allocation;
+        auto remainingPartitionsCopy = remainingPartitions;
+        auto availableWorkersCopy = availableWorkersByPartition;
+        auto workerLoadsCopy = workerLoads;
+        allocate(selectedPartition, workerId, allocationCopy, remainingPartitionsCopy, availableWorkersCopy, workerLoadsCopy);
+        int remainingCount = alloc_plan(allocationCopy, remainingPartitionsCopy, availableWorkersCopy, workerLoadsCopy);
+        if (remainingCount == 0) {
+            remainingPartitions.clear();
+            availableWorkersByPartition.clear();
+            allocation.insert(allocationCopy.begin(), allocationCopy.end());
+            workerLoads.insert(workerLoadsCopy.begin(), workerLoadsCopy.end());
             return 0;
         }
-        if (rem < best_rem) {
-            best_rem = rem;
-            best = {.alloc = alloc2, .remain = remain2, .p_avail = p_avail2, .loads = loads2};
+        if (remainingCount < bestRemainingPartitions) {
+            bestRemainingPartitions = remainingCount;
+            best = {.alloc = allocationCopy, .remain = remainingPartitionsCopy,
+                    .p_avail = availableWorkersCopy, .loads = workerLoadsCopy};
         }
     }
-    alloc.insert(best.alloc.begin(), best.alloc.end());
-    remain.clear();
-    remain.insert(best.remain.begin(), best.remain.end());
-    p_avail.clear();
-    p_avail.insert(best.p_avail.begin(), best.p_avail.end());
-    loads.clear();
-    loads.insert(best.loads.begin(), best.loads.end());
-    return best_rem;
+    allocation.insert(best.alloc.begin(), best.alloc.end());
+    remainingPartitions.clear();
+    remainingPartitions.insert(best.remain.begin(), best.remain.end());
+    availableWorkersByPartition.clear();
+    availableWorkersByPartition.insert(best.p_avail.begin(), best.p_avail.end());
+    workerLoads.clear();
+    workerLoads.insert(best.loads.begin(), best.loads.end());
+    return bestRemainingPartitions;
 }
 
-std::vector<int> reallocate_parts(std::map<int, string> &alloc, std::set<int> &remain,
-                                         const std::map<int, std::vector<string>> &P_AVAIL) {
-    map<int, int> P_COUNT;
-    for (auto it = P_AVAIL.begin(); it != P_AVAIL.end(); it++) {
-        P_COUNT[it->first] = it->second.size();
+std::vector<int> reallocate_parts(std::map<int, string> &allocation, std::set<int> &remainingPartitions,
+                                  const std::map<int, std::vector<string>> &availableWorkersByPartition) {
+    map<int, int> partitionCopyCounts;
+    for (auto iterator = availableWorkersByPartition.begin(); iterator != availableWorkersByPartition.end(); iterator++) {
+        partitionCopyCounts[iterator->first] = iterator->second.size();
     }
-    vector<int> remain_l(remain.begin(), remain.end());
-    sort(remain_l.begin(), remain_l.end(),
-         [&P_COUNT](int &p1, int &p2) { return P_COUNT[p1] > P_COUNT[p2]; });  // partitions with more copies goes first
-    vector<int> PARTITIONS;
-    for (auto it = P_COUNT.begin(); it != P_COUNT.end(); it++) {
-        PARTITIONS.push_back(it->first);
+    vector<int> remainingPartitionList(remainingPartitions.begin(), remainingPartitions.end());
+    sort(remainingPartitionList.begin(), remainingPartitionList.end(),
+         [&partitionCopyCounts](int &firstPartition, int &secondPartition) {
+             return partitionCopyCounts[firstPartition] > partitionCopyCounts[secondPartition];
+         });  // partitions with more copies goes first
+    vector<int> allPartitions;
+    for (auto iterator = partitionCopyCounts.begin(); iterator != partitionCopyCounts.end(); iterator++) {
+        allPartitions.push_back(iterator->first);
     }
-    sort(PARTITIONS.begin(), PARTITIONS.end(), [&P_COUNT](int &p1, int &p2) {
-        return P_COUNT[p1] < P_COUNT[p2];
+    sort(allPartitions.begin(), allPartitions.end(), [&partitionCopyCounts](int &firstPartition, int &secondPartition) {
+        return partitionCopyCounts[firstPartition] < partitionCopyCounts[secondPartition];
     });  // partitions with fewer copies goes first
-    vector<int> copying;
-    while (!remain_l.empty()) {
-        int p0 = remain_l.back();
-        remain_l.pop_back();
-        int w_cnt = P_COUNT[p0];
-        if (w_cnt == 1) {
-            copying.push_back(p0);
+    vector<int> partitionsToCopy;
+    while (!remainingPartitionList.empty()) {
+        int partitionToCopy = remainingPartitionList.back();
+        remainingPartitionList.pop_back();
+        int copyCount = partitionCopyCounts[partitionToCopy];
+        if (copyCount == 1) {
+            partitionsToCopy.push_back(partitionToCopy);
             continue;
         }
-        const auto &ws = P_AVAIL.find(p0)->second;
-        bool need_pushing = true;
-        for (auto it = PARTITIONS.begin(); it != PARTITIONS.end(); it++) {
-            int p = *it;
-            if (w_cnt <= P_COUNT[p]) {
-                copying.push_back(p0);  // assuming PARTITIONS are in sorted order of copy count
-                need_pushing = false;
+        const auto &availableWorkers = availableWorkersByPartition.find(partitionToCopy)->second;
+        bool needsDataPush = true;
+        for (auto iterator = allPartitions.begin(); iterator != allPartitions.end(); iterator++) {
+            int candidatePartition = *iterator;
+            if (copyCount <= partitionCopyCounts[candidatePartition]) {
+                partitionsToCopy.push_back(partitionToCopy);  // assuming allPartitions are in sorted order of copy count
+                needsDataPush = false;
                 break;
             }
-            if (alloc.find(p) == alloc.end()) {
+            if (allocation.find(candidatePartition) == allocation.end()) {
                 continue;
             }
-            auto w = alloc[p];
-            if (std::find(ws.begin(), ws.end(), w) != ws.end()) {
-                alloc.erase(p);
-                alloc[p0] = w;
-                remain_l.push_back(p);
-                need_pushing = false;
+            auto assignedWorker = allocation[candidatePartition];
+            if (std::find(availableWorkers.begin(), availableWorkers.end(), assignedWorker) != availableWorkers.end()) {
+                allocation.erase(candidatePartition);
+                allocation[partitionToCopy] = assignedWorker;
+                remainingPartitionList.push_back(candidatePartition);
+                needsDataPush = false;
                 break;
             }
         }
-        if (need_pushing) copying.push_back(p0);
+        if (needsDataPush) partitionsToCopy.push_back(partitionToCopy);
     }
-    return copying;
+    return partitionsToCopy;
 }
 
-void scale_up(std::map<string, int, std::less<>> &loads, map<string, string, std::less<>> &workers, int copy_count) {
-    int curr_load = 0;
-    for (auto it = loads.begin(); it != loads.end(); it++) {
-        curr_load += it->second;
+void scale_up(std::map<string, int, std::less<>> &workerLoads, map<string, string, std::less<>> &workers,
+              int partitionsToCopy) {
+    int currentLoad = 0;
+    for (auto iterator = workerLoads.begin(); iterator != workerLoads.end(); iterator++) {
+        currentLoad += iterator->second;
     }
-    int n_cores = copy_count + curr_load - 3 * loads.size();
-    if (n_cores < 0) {
+    int requiredCores = partitionsToCopy + currentLoad - 3 * workerLoads.size();
+    if (requiredCores < 0) {
         return;
     }
-    int n_workers = n_cores / 2 + 1;  // allocate a little more to prevent saturation
-    if (n_cores % 2 > 0) n_workers++;
-    if (n_workers == 0) return;
+    int workersToAdd = requiredCores / 2 + 1;  // allocate a little more to prevent saturation
+    if (requiredCores % 2 > 0) workersToAdd++;
+    if (workersToAdd == 0) return;
 
     K8sWorkerController *k8sController = K8sWorkerController::getInstance();
-    map<string, string> w_new = k8sController->scaleUp(n_workers);
+    map<string, string> newWorkers = k8sController->scaleUp(workersToAdd);
 
-    for (auto it = w_new.begin(); it != w_new.end(); it++) {
-        loads[it->first] = 0.1;
-        workers[it->first] = it->second;
+    for (auto iterator = newWorkers.begin(); iterator != newWorkers.end(); iterator++) {
+        workerLoads[iterator->first] = 0.1;
+        workers[iterator->first] = iterator->second;
     }
 }
 
-int alloc_net_plan(std::map<int, string> &alloc, std::vector<int> &parts,
+int alloc_net_plan(std::map<int, string> &allocation, std::vector<int> &partitionsToAllocate,
                    std::map<int, std::pair<string, string>> &transfer,
-                   std::map<string, int, std::less<>> &net_loads,
-                   std::map<string, int, std::less<>> &loads,
-                   const std::map<int, std::vector<string>> &p_avail,
-                   int curr_best) {
-    int curr_load = std::max_element(net_loads.begin(), net_loads.end(),
-                                     [](const auto &p1, const auto &p2) { return p1.second < p2.second; })
+                   std::map<string, int, std::less<>> &networkLoads,
+                   std::map<string, int, std::less<>> &workerLoads,
+                   const std::map<int, std::vector<string>> &availableWorkersByPartition,
+                   int currentBestNetworkLoad) {
+    int currentNetworkLoad = std::max_element(networkLoads.begin(), networkLoads.end(),
+                                     [](const auto &firstLoad, const auto &secondLoad) {
+                                         return firstLoad.second < secondLoad.second;
+                                     })
                         ->second;
-    if (curr_load >= curr_best) {
-        return curr_load;
+    if (currentNetworkLoad >= currentBestNetworkLoad) {
+        return currentNetworkLoad;
     }
-    if (parts.empty()) {
-        if (net_loads.empty()) return 0;
-        return curr_load;
+    if (partitionsToAllocate.empty()) {
+        if (networkLoads.empty()) return 0;
+        return currentNetworkLoad;
     }
     struct best_net_alloc {
         std::map<int, string> alloc;
@@ -269,64 +281,66 @@ int alloc_net_plan(std::map<int, string> &alloc, std::vector<int> &parts,
         std::map<string, int, std::less<>> net_loads;
         std::map<string, int, std::less<>> loads;
     };
-    int best = curr_best;
-    struct best_net_alloc best_plan = {.transfer = transfer, .net_loads = net_loads, .loads = loads};
-    int p = parts.back();
-    parts.pop_back();
-    vector<string> wts;
-    for (auto it = loads.begin(); it != loads.end(); it++) {
-        wts.push_back(it->first);
+    int bestNetworkLoad = currentBestNetworkLoad;
+    struct best_net_alloc bestPlan = {.transfer = transfer, .net_loads = networkLoads, .loads = workerLoads};
+    int partitionId = partitionsToAllocate.back();
+    partitionsToAllocate.pop_back();
+    vector<string> candidateWorkers;
+    for (auto iterator = workerLoads.begin(); iterator != workerLoads.end(); iterator++) {
+        candidateWorkers.push_back(iterator->first);
     }
-    sort(wts.begin(), wts.end(), [&loads](string &w1, string &w2) {
-        int l1 = loads[w1];
-        int l2 = loads[w2];
-        if (l1 < 3 || l2 < 3) return l1 < l2;
-        return l1 <= l2;
+    sort(candidateWorkers.begin(), candidateWorkers.end(), [&workerLoads](string &firstWorker, string &secondWorker) {
+        int firstLoad = workerLoads[firstWorker];
+        int secondLoad = workerLoads[secondWorker];
+        if (firstLoad < 3 || secondLoad < 3) return firstLoad < secondLoad;
+        return firstLoad <= secondLoad;
     });  // load=1 goes first and load=3 goes last. The order is 1,0,2,3 for 4 cores.
-    const auto &ws = p_avail.find(p)->second;
-    int minLoad = 100000000;
-    for (auto it = loads.begin(); it != loads.end(); it++) {
-        int load = it->second;
-        if (minLoad > load) {
-            minLoad = load;
+    const auto &availableWorkers = availableWorkersByPartition.find(partitionId)->second;
+    int minimumWorkerLoad = 100000000;
+    for (auto iterator = workerLoads.begin(); iterator != workerLoads.end(); iterator++) {
+        int workerLoad = iterator->second;
+        if (minimumWorkerLoad > workerLoad) {
+            minimumWorkerLoad = workerLoad;
         }
     }
-    for (auto itf = ws.begin(); itf != ws.end(); itf++) {
-        auto wf = *itf;
-        for (auto itt = wts.begin(); itt != wts.end(); itt++) {
-            auto wt = *itt;
-            int currLoad = loads[wt];
-            if (currLoad > minLoad) continue;
-            auto alloc2 = alloc;          // need copy => do not copy reference
-            auto parts2 = parts;          // need copy => do not copy reference
-            auto transfer2 = transfer;    // need copy => do not copy reference
-            auto net_loads2 = net_loads;  // need copy => do not copy reference
-            auto loads2 = loads;          // need copy => do not copy reference
-            if (wf != wt) {
-                transfer2[p] = {wf, wt};  // assume
-                net_loads2[wf]++;
-                net_loads2[wt]++;
+    for (auto sourceIterator = availableWorkers.begin(); sourceIterator != availableWorkers.end(); sourceIterator++) {
+        auto sourceWorker = *sourceIterator;
+        for (auto targetIterator = candidateWorkers.begin(); targetIterator != candidateWorkers.end(); targetIterator++) {
+            auto targetWorker = *targetIterator;
+            int targetLoad = workerLoads[targetWorker];
+            if (targetLoad > minimumWorkerLoad) continue;
+            auto allocationCopy = allocation;
+            auto partitionsCopy = partitionsToAllocate;
+            auto transferCopy = transfer;
+            auto networkLoadsCopy = networkLoads;
+            auto workerLoadsCopy = workerLoads;
+            if (sourceWorker != targetWorker) {
+                transferCopy[partitionId] = {sourceWorker, targetWorker};  // assume
+                networkLoadsCopy[sourceWorker]++;
+                networkLoadsCopy[targetWorker]++;
             }
-            alloc2[p] = wt;
-            loads2[wt]++;
-            int new_net_load = alloc_net_plan(alloc2, parts2, transfer2, net_loads2, loads2, p_avail, best);
-            if (new_net_load < best) {
-                best = new_net_load;
-                best_plan = {.alloc = alloc2, .transfer = transfer2, .net_loads = net_loads2, .loads = loads2};
+            allocationCopy[partitionId] = targetWorker;
+            workerLoadsCopy[targetWorker]++;
+            int newNetworkLoad = alloc_net_plan(allocationCopy, partitionsCopy, transferCopy, networkLoadsCopy,
+                                                workerLoadsCopy, availableWorkersByPartition, bestNetworkLoad);
+            if (newNetworkLoad < bestNetworkLoad) {
+                bestNetworkLoad = newNetworkLoad;
+                bestPlan = {.alloc = allocationCopy, .transfer = transferCopy,
+                             .net_loads = networkLoadsCopy, .loads = workerLoadsCopy};
             }
         }
     }
-    alloc.clear();
-    alloc.insert(best_plan.alloc.begin(), best_plan.alloc.end());
-    auto &b_transfer = best_plan.transfer;
-    for (auto it = b_transfer.begin(); it != b_transfer.end(); it++) {
-        transfer[it->first] = it->second;
+    allocation.clear();
+    allocation.insert(bestPlan.alloc.begin(), bestPlan.alloc.end());
+    auto &bestTransfers = bestPlan.transfer;
+    for (auto iterator = bestTransfers.begin(); iterator != bestTransfers.end(); iterator++) {
+        transfer[iterator->first] = iterator->second;
     }
-    net_loads.clear();
-    net_loads.insert(best_plan.net_loads.begin(), best_plan.net_loads.end());
-    loads.clear();
-    loads.insert(best_plan.loads.begin(), best_plan.loads.end());
-    return best;
+    networkLoads.clear();
+    networkLoads.insert(bestPlan.net_loads.begin(), bestPlan.net_loads.end());
+    workerLoads.clear();
+    workerLoads.insert(bestPlan.loads.begin(), bestPlan.loads.end());
+    return bestNetworkLoad;
 }
 
 static map<string, string, std::less<>> get_workers(SQLiteDBInterface *sqlite) {
@@ -436,7 +450,7 @@ void filter_partitions(std::map<string, std::vector<string>, std::less<>> &parti
     std::set<int> remain;
     build_avail_partitions(partitionMap, p_avail, remain);
 
-    const std::map<int, std::vector<string>> P_AVAIL = p_avail;  // get a copy and make it const
+    const std::map<int, std::vector<string>> originalAvailableWorkersByPartition = p_avail;
 
     filter_overloaded_workers(loads, p_avail);
 
@@ -444,8 +458,8 @@ void filter_partitions(std::map<string, std::vector<string>, std::less<>> &parti
     int unallocated = alloc_plan(alloc, remain, p_avail, loads);
     if (unallocated > 0) {
         triangleCount_logger.info(to_string(unallocated) + " partitions remaining after alloc_plan");
-        auto copying = reallocate_parts(alloc, remain, P_AVAIL);
-        scale_up(loads, workers, copying.size());
+        auto partitionsToCopy = reallocate_parts(alloc, remain, originalAvailableWorkersByPartition);
+        scale_up(loads, workers, partitionsToCopy.size());
         triangleCount_logger.info("Scale up completed");
 
         map<string, int, std::less<>> net_loads;
@@ -459,11 +473,12 @@ void filter_partitions(std::map<string, std::vector<string>, std::less<>> &parti
         }
 
         std::map<int, std::pair<string, string>> transfer;
-        int net_load = alloc_net_plan(alloc, copying, transfer, net_loads, loads, P_AVAIL, 100000000);
+        int net_load = alloc_net_plan(alloc, partitionsToCopy, transfer, net_loads, loads,
+                                      originalAvailableWorkersByPartition, 100000000);
         for (auto it = transfer.begin(); it != transfer.end(); it++) {
-            auto p = it->first;
+            auto partitionId = it->first;
             auto w_to = it->second.second;
-            alloc[p] = w_to;
+            alloc[partitionId] = w_to;
         }
 
         execute_partition_transfers(sqlite, transfer, workers, graphId);

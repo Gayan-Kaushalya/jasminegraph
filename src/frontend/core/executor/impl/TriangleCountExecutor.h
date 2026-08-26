@@ -93,22 +93,27 @@ class TriangleCountExecutor : public AbstractExecutor {
 };
 
 // Partition filtering and allocation helper functions (shared between executors)
-void allocate(int p, std::string w, std::map<int, std::string> &alloc, std::set<int> &remain,
-             std::map<int, std::vector<std::string>> &p_avail, std::map<std::string, int, std::less<>> &loads);
+void allocate(int partitionId, std::string workerId, std::map<int, std::string> &allocation,
+              std::set<int> &remainingPartitions,
+              std::map<int, std::vector<std::string>> &availableWorkersByPartition,
+              std::map<std::string, int, std::less<>> &workerLoads);
 
-int alloc_plan(std::map<int, std::string> &alloc, std::set<int> &remain,
-               std::map<int, std::vector<std::string>> &p_avail, std::map<std::string, int, std::less<>> &loads);
+int alloc_plan(std::map<int, std::string> &allocation, std::set<int> &remainingPartitions,
+               std::map<int, std::vector<std::string>> &availableWorkersByPartition,
+               std::map<std::string, int, std::less<>> &workerLoads);
 
-std::vector<int> reallocate_parts(std::map<int, std::string> &alloc, std::set<int> &remain,
-                                  const std::map<int, std::vector<std::string>> &P_AVAIL);
+std::vector<int> reallocate_parts(std::map<int, std::string> &allocation, std::set<int> &remainingPartitions,
+                                  const std::map<int, std::vector<std::string>> &originalAvailableWorkersByPartition);
 
-void scale_up(std::map<std::string, int, std::less<>> &loads,
-              std::map<std::string, std::string, std::less<>> &workers, int copy_count);
+void scale_up(std::map<std::string, int, std::less<>> &workerLoads,
+              std::map<std::string, std::string, std::less<>> &workers, int partitionsToCopy);
 
-int alloc_net_plan(std::map<int, std::string> &alloc, std::vector<int> &parts,
+int alloc_net_plan(std::map<int, std::string> &allocation, std::vector<int> &partitionsToAllocate,
                    std::map<int, std::pair<std::string, std::string>> &transfer,
-                   std::map<std::string, int, std::less<>> &net_loads, std::map<std::string, int, std::less<>> &loads,
-                   const std::map<int, std::vector<std::string>> &P_AVAIL, int C);
+                   std::map<std::string, int, std::less<>> &networkLoads,
+                   std::map<std::string, int, std::less<>> &workerLoads,
+                   const std::map<int, std::vector<std::string>> &availableWorkersByPartition,
+                   int currentBestNetworkLoad);
 
 void filter_partitions(std::map<std::string, std::vector<std::string>, std::less<>> &partitionMap,
                        SQLiteDBInterface *sqlite, const std::string &graphId);

@@ -364,7 +364,8 @@ static void processTriangleCount(const std::string &masterIP, int conn_fd, SQLit
                 jobDetails.addParameter(Conts::PARAM_KEYS::AUTO_CALIBRATION, "true");
             }
         } else {
-            ui_frontend_logger.error("Can't calibrate the graph now");
+            ui_frontend_logger.error("Can't calibrate graph " + graph_id +
+                                     " because jobs for different graphs are currently running");
         }
     }
 
