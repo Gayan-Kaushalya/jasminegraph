@@ -93,7 +93,7 @@ class TriangleCountExecutor : public AbstractExecutor {
 };
 
 // Partition filtering and allocation helper functions (shared between executors)
-void allocate(int partitionId, std::string workerId, std::map<int, std::string> &allocation,
+void allocate(int partitionId, const std::string &workerId, std::map<int, std::string> &allocation,
               std::set<int> &remainingPartitions,
               std::map<int, std::vector<std::string>> &availableWorkersByPartition,
               std::map<std::string, int, std::less<>> &workerLoads);
