@@ -88,7 +88,8 @@ void allocate(int partitionId, const string &workerId, std::map<int, string> &al
     availableWorkersByPartition.erase(partitionId);
     workerLoads[workerId]++;
     if (workerLoads[workerId] >= 3) {
-        for (auto iterator = availableWorkersByPartition.begin(); iterator != availableWorkersByPartition.end(); iterator++) {
+           for (auto iterator = availableWorkersByPartition.begin();
+               iterator != availableWorkersByPartition.end(); iterator++) {
             auto &partitionWorkers = iterator->second;
             auto workerIterator = std::find(partitionWorkers.begin(), partitionWorkers.end(), workerId);
             if (workerIterator != partitionWorkers.end()) {
@@ -156,7 +157,8 @@ int alloc_plan(std::map<int, string> &allocation, std::set<int> &remainingPartit
         auto remainingPartitionsCopy = remainingPartitions;
         auto availableWorkersCopy = availableWorkersByPartition;
         auto workerLoadsCopy = workerLoads;
-        allocate(selectedPartition, workerId, allocationCopy, remainingPartitionsCopy, availableWorkersCopy, workerLoadsCopy);
+        allocate(selectedPartition, workerId, allocationCopy, remainingPartitionsCopy,
+             availableWorkersCopy, workerLoadsCopy);
         int remainingCount = alloc_plan(allocationCopy, remainingPartitionsCopy, availableWorkersCopy, workerLoadsCopy);
         if (remainingCount == 0) {
             remainingPartitions.clear();
@@ -184,7 +186,8 @@ int alloc_plan(std::map<int, string> &allocation, std::set<int> &remainingPartit
 std::vector<int> reallocate_parts(std::map<int, string> &allocation, std::set<int> &remainingPartitions,
                                   const std::map<int, std::vector<string>> &availableWorkersByPartition) {
     map<int, int> partitionCopyCounts;
-    for (auto iterator = availableWorkersByPartition.begin(); iterator != availableWorkersByPartition.end(); iterator++) {
+        for (auto iterator = availableWorkersByPartition.begin();
+            iterator != availableWorkersByPartition.end(); iterator++) {
         partitionCopyCounts[iterator->first] = iterator->second.size();
     }
     vector<int> remainingPartitionList(remainingPartitions.begin(), remainingPartitions.end());
@@ -215,7 +218,8 @@ std::vector<int> reallocate_parts(std::map<int, string> &allocation, std::set<in
              iterator != allPartitions.end() && !partitionCopyAdded; iterator++) {
             int candidatePartition = *iterator;
             if (copyCount <= partitionCopyCounts[candidatePartition]) {
-                partitionsToCopy.push_back(partitionToCopy);  // assuming allPartitions are in sorted order of copy count
+                // allPartitions are sorted by copy count
+                partitionsToCopy.push_back(partitionToCopy);
                 needsDataPush = false;
                 partitionCopyAdded = true;
             } else if (allocation.find(candidatePartition) == allocation.end()) {
@@ -304,9 +308,11 @@ int alloc_net_plan(std::map<int, string> &allocation, std::vector<int> &partitio
             minimumWorkerLoad = workerLoad;
         }
     }
-    for (auto sourceIterator = availableWorkers.begin(); sourceIterator != availableWorkers.end(); sourceIterator++) {
+    for (auto sourceIterator = availableWorkers.begin();
+         sourceIterator != availableWorkers.end(); sourceIterator++) {
         auto sourceWorker = *sourceIterator;
-        for (auto targetIterator = candidateWorkers.begin(); targetIterator != candidateWorkers.end(); targetIterator++) {
+        for (auto targetIterator = candidateWorkers.begin();
+             targetIterator != candidateWorkers.end(); targetIterator++) {
             auto targetWorker = *targetIterator;
             int targetLoad = workerLoads[targetWorker];
             if (targetLoad > minimumWorkerLoad) continue;
@@ -1933,10 +1939,11 @@ static int distributeTasksToWorkers(
                 bool isCompositeAggregationEnabled = taskCtx.isCompositeAggregation;
                 int workerThreadPriority = taskCtx.threadPriority;
 
-                collector.intermThreads.push_back(std::thread([&threadResultBuffer, taskIndex, graphIdForTask, host, workerPort,
-                    workerDataPort, partitionIdInt, masterIp, uniqueRequestId, isCompositeAggregationEnabled,
-                    workerThreadPriority, fileCombinationsForTask, combinationWorkerMapPtr, triangleTreePtr,
-                    triangleTreeMutexPtr, masterTraceContextForTask]() {
+                collector.intermThreads.push_back(std::thread(
+                    [&threadResultBuffer, taskIndex, graphIdForTask, host, workerPort, workerDataPort,
+                     partitionIdInt, masterIp, uniqueRequestId, isCompositeAggregationEnabled,
+                     workerThreadPriority, fileCombinationsForTask, combinationWorkerMapPtr, triangleTreePtr,
+                     triangleTreeMutexPtr, masterTraceContextForTask]() {
                         threadResultBuffer[taskIndex] = TriangleCountExecutor::getTriangleCount(graphIdForTask, host,
                             workerPort, workerDataPort, partitionIdInt, masterIp, uniqueRequestId,
                             isCompositeAggregationEnabled, workerThreadPriority, fileCombinationsForTask,
@@ -2031,8 +2038,8 @@ static long gatherWorkerResults(
             logger.info("Waiting for result from worker_" + workerID + " partition_" + partitionId +
                         " host_" + host + " uuid=" + to_string(uniqueId));
 
-            if (intermThread.joinable()) { 
-                intermThread.join(); 
+            if (intermThread.joinable()) {
+                intermThread.join();
             }
 
             long worker_result = intermResThread[taskIndex];
