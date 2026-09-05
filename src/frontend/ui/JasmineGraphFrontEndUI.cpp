@@ -358,11 +358,7 @@ static void processTriangleCount(const std::string &masterIP, int conn_fd, SQLit
 
     if (graphSLA == 0) {
         if (JasmineGraphFrontEnd::areRunningJobsForSameGraph()) {
-            if (canCalibrate) {
-                jobDetails.addParameter(Conts::PARAM_KEYS::AUTO_CALIBRATION, "false");
-            } else {
-                jobDetails.addParameter(Conts::PARAM_KEYS::AUTO_CALIBRATION, "true");
-            }
+            jobDetails.addParameter(Conts::PARAM_KEYS::AUTO_CALIBRATION, canCalibrate ? "false" : "true");
         } else {
             ui_frontend_logger.error("Can't calibrate graph " + graph_id +
                                      " because jobs for different graphs are currently running");
@@ -373,11 +369,7 @@ static void processTriangleCount(const std::string &masterIP, int conn_fd, SQLit
     jobDetails.setMasterIP(masterIP);
     jobDetails.addParameter(Conts::PARAM_KEYS::GRAPH_ID, graph_id);
     jobDetails.addParameter(Conts::PARAM_KEYS::CATEGORY, Conts::SLA_CATEGORY::LATENCY);
-    if (canCalibrate) {
-        jobDetails.addParameter(Conts::PARAM_KEYS::CAN_CALIBRATE, "true");
-    } else {
-        jobDetails.addParameter(Conts::PARAM_KEYS::CAN_CALIBRATE, "false");
-    }
+    jobDetails.addParameter(Conts::PARAM_KEYS::AUTO_CALIBRATION, canCalibrate ? "true" : "false");
 
     jobScheduler->pushJob(jobDetails);
     JobResponse jobResponse = jobScheduler->getResult(jobDetails);
