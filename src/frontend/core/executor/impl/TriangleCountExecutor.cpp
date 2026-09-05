@@ -121,7 +121,7 @@ int alloc_plan(std::map<int, string> &allocation, std::set<int> &remainingPartit
     for (bool done = false; !done;) {
         string workerId = "";
         done = true;
-        int partitionId;
+        int partitionId = *remainingPartitions.begin();
         for (auto iterator = remainingPartitions.begin(); iterator != remainingPartitions.end(); iterator++) {
             partitionId = *iterator;
             if (availableWorkersByPartition[partitionId].size() == 1) {
