@@ -80,7 +80,7 @@ TriangleCountExecutor::TriangleCountExecutor(SQLiteDBInterface *db, PerformanceS
     this->request = jobRequest;
 }
 
-void allocate(int partitionId, string workerId, std::map<int, string> &allocation,
+void allocate(int partitionId, const string &workerId, std::map<int, string> &allocation,
               std::set<int> &remainingPartitions, std::map<int, std::vector<string>> &availableWorkersByPartition,
               std::map<string, int, std::less<>> &workerLoads) {
     allocation[partitionId] = workerId;
@@ -210,14 +210,15 @@ std::vector<int> reallocate_parts(std::map<int, string> &allocation, std::set<in
         }
         const auto &availableWorkers = availableWorkersByPartition.find(partitionToCopy)->second;
         bool needsDataPush = true;
-        for (auto iterator = allPartitions.begin(); iterator != allPartitions.end(); iterator++) {
+        bool partitionCopyAdded = false;
+        for (auto iterator = allPartitions.begin();
+             iterator != allPartitions.end() && !partitionCopyAdded; iterator++) {
             int candidatePartition = *iterator;
             if (copyCount <= partitionCopyCounts[candidatePartition]) {
                 partitionsToCopy.push_back(partitionToCopy);  // assuming allPartitions are in sorted order of copy count
                 needsDataPush = false;
-                break;
-            }
-            if (allocation.find(candidatePartition) == allocation.end()) {
+                partitionCopyAdded = true;
+            } else if (allocation.find(candidatePartition) == allocation.end()) {
                 continue;
             }
             auto assignedWorker = allocation[candidatePartition];
@@ -473,8 +474,8 @@ void filter_partitions(std::map<string, std::vector<string>, std::less<>> &parti
         }
 
         std::map<int, std::pair<string, string>> transfer;
-        int net_load = alloc_net_plan(alloc, partitionsToCopy, transfer, net_loads, loads,
-                                      originalAvailableWorkersByPartition, 100000000);
+        alloc_net_plan(alloc, partitionsToCopy, transfer, net_loads, loads,
+                   originalAvailableWorkersByPartition, 100000000);
         for (auto it = transfer.begin(); it != transfer.end(); it++) {
             auto partitionId = it->first;
             auto w_to = it->second.second;
