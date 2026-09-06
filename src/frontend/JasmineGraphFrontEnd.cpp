@@ -2937,12 +2937,7 @@ static void cypherCommand(std::string masterIP, int connFd, vector<DataPublisher
     jobDetails.addParameter(Conts::PARAM_KEYS::CONN_FILE_DESCRIPTOR, std::to_string(connFd));
     jobDetails.addParameter(Conts::PARAM_KEYS::LOOP_EXIT_POINTER,
                             std::to_string(reinterpret_cast<std::uintptr_t>(loop_exit)));
-
-    if (canCalibrate) {
-        jobDetails.addParameter(Conts::PARAM_KEYS::CAN_CALIBRATE, "true");
-    } else {
-        jobDetails.addParameter(Conts::PARAM_KEYS::CAN_CALIBRATE, "false");
-    }
+    jobDetails.addParameter(Conts::PARAM_KEYS::AUTO_CALIBRATION, canCalibrate ? "true" : "false");
 
     jobScheduler->pushJob(jobDetails);
     frontend_logger.info("Job pushed");
@@ -3067,12 +3062,7 @@ static void semanticBeamSearch(std::string masterIP, int connFd, vector<DataPubl
     jobDetails.addParameter(Conts::PARAM_KEYS::CONN_FILE_DESCRIPTOR, std::to_string(connFd));
     jobDetails.addParameter(Conts::PARAM_KEYS::LOOP_EXIT_POINTER,
                             std::to_string(reinterpret_cast<std::uintptr_t>(loop_exit)));
-
-    if (canCalibrate) {
-        jobDetails.addParameter(Conts::PARAM_KEYS::CAN_CALIBRATE, "true");
-    } else {
-        jobDetails.addParameter(Conts::PARAM_KEYS::CAN_CALIBRATE, "false");
-    }
+    jobDetails.addParameter(Conts::PARAM_KEYS::AUTO_CALIBRATION, canCalibrate ? "true" : "false");
 
     jobScheduler->pushJob(jobDetails);
     frontend_logger.info("Job pushed");
@@ -5866,11 +5856,7 @@ static void kafka_topics_command(int connFd, SQLiteDBInterface *sqlite, bool *lo
                 jobDetails.setMasterIP(masterIP);
                 jobDetails.addParameter(Conts::PARAM_KEYS::GRAPH_ID, graph_id);
                 jobDetails.addParameter(Conts::PARAM_KEYS::CATEGORY, Conts::SLA_CATEGORY::LATENCY);
-                if (canCalibrate) {
-                    jobDetails.addParameter(Conts::PARAM_KEYS::CAN_CALIBRATE, "true");
-                } else {
-                    jobDetails.addParameter(Conts::PARAM_KEYS::CAN_CALIBRATE, "false");
-                }
+                jobDetails.addParameter(Conts::PARAM_KEYS::AUTO_CALIBRATION, canCalibrate ? "true" : "false");
 
                 jobScheduler->pushJob(jobDetails);
                 JobResponse jobResponse = jobScheduler->getResult(jobDetails);
@@ -6598,12 +6584,7 @@ static void kafka_topics_command(int connFd, SQLiteDBInterface *sqlite, bool *lo
             jobDetails.addParameter(Conts::PARAM_KEYS::CATEGORY, Conts::SLA_CATEGORY::LATENCY);
             jobDetails.addParameter(Conts::PARAM_KEYS::ALPHA, std::to_string(alpha));
             jobDetails.addParameter(Conts::PARAM_KEYS::ITERATION, std::to_string(iterations));
-
-            if (canCalibrate) {
-                jobDetails.addParameter(Conts::PARAM_KEYS::CAN_CALIBRATE, "true");
-            } else {
-                jobDetails.addParameter(Conts::PARAM_KEYS::CAN_CALIBRATE, "false");
-            }
+            jobDetails.addParameter(Conts::PARAM_KEYS::AUTO_CALIBRATION, canCalibrate ? "true" : "false");
 
             jobScheduler->pushJob(jobDetails);
             JobResponse jobResponse = jobScheduler->getResult(jobDetails);
@@ -7211,11 +7192,7 @@ static void sheep_triangles_command(const std::string& masterIP, int conn_fd, SQ
     jobDetails.setMasterIP(masterIP);
     jobDetails.addParameter(Conts::PARAM_KEYS::GRAPH_ID, graph_id);
     jobDetails.addParameter(Conts::PARAM_KEYS::CATEGORY, Conts::SLA_CATEGORY::LATENCY);
-    if (canCalibrate) {
-        jobDetails.addParameter(Conts::PARAM_KEYS::CAN_CALIBRATE, "true");
-    } else {
-        jobDetails.addParameter(Conts::PARAM_KEYS::CAN_CALIBRATE, "false");
-    }
+    jobDetails.addParameter(Conts::PARAM_KEYS::AUTO_CALIBRATION, canCalibrate ? "true" : "false");
 
     jobScheduler->pushJob(jobDetails);
     JobResponse jobResponse = jobScheduler->getResult(jobDetails);
