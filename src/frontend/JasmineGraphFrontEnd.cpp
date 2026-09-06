@@ -4646,8 +4646,8 @@ void addStreamHDFSCommand(std::string masterIP, int connFd, std::string& hdfsSer
                           std::thread& inputStreamHandlerThread, int numberOfPartitions, SQLiteDBInterface* sqlite,
                           bool* loop_exit_p) {
     std::string hdfsPort;
-    std::string message1 = "Do you want to use the default HDFS server(y/n)?";
-    int resultWr = write(connFd, message1.c_str(), message1.length());
+    std::string defaultHdfsPrompt = "Do you want to use the default HDFS server(y/n)?";
+    int resultWr = write(connFd, defaultHdfsPrompt.c_str(), defaultHdfsPrompt.length());
     if (resultWr < 0) {
         frontend_logger.error("Error writing to socket");
         *loop_exit_p = true;
@@ -4721,8 +4721,8 @@ void addStreamHDFSCommand(std::string masterIP, int connFd, std::string& hdfsSer
         frontend_logger.error("HDFS server port is empty.");
     }
 
-    std::string message2 = "HDFS file path: ";
-    resultWr = write(connFd, message2.c_str(), message2.length());
+    std::string hdfsFilePathPrompt = "HDFS file path: ";
+    resultWr = write(connFd, hdfsFilePathPrompt.c_str(), hdfsFilePathPrompt.length());
     if (resultWr < 0) {
         frontend_logger.error("Error writing to socket");
         *loop_exit_p = true;
@@ -4854,8 +4854,8 @@ bool JasmineGraphFrontEnd::constructKGStreamHDFSCommand(std::string masterIP, in
                                                         SQLiteDBInterface* sqlite, bool* loop_exit_p) {
     std::string hdfsPort;
     std::string hdfsServerIp;
-    std::string message1 = "Do you want to use the default HDFS server(y/n)?";
-    int resultWr = write(connFd, message1.c_str(), message1.length());
+    std::string defaultHdfsPrompt = "Do you want to use the default HDFS server(y/n)?";
+    int resultWr = write(connFd, defaultHdfsPrompt.c_str(), defaultHdfsPrompt.length());
     if (resultWr < 0) {
         frontend_logger.error("Error writing to socket");
         *loop_exit_p = true;
@@ -4932,8 +4932,8 @@ bool JasmineGraphFrontEnd::constructKGStreamHDFSCommand(std::string masterIP, in
         frontend_logger.error("HDFS server port is empty.");
     }
 
-    std::string message2 = "HDFS file path: ";
-    resultWr = write(connFd, message2.c_str(), message2.length());
+    std::string hdfsFilePathPrompt = "HDFS file path: ";
+    resultWr = write(connFd, hdfsFilePathPrompt.c_str(), hdfsFilePathPrompt.length());
     if (resultWr < 0) {
         frontend_logger.error("Error writing to socket");
         *loop_exit_p = true;
@@ -6999,8 +6999,8 @@ static std::string format_local_timestamp(std::time_t timePoint) {
         }
 
         void JasmineGraphFrontEnd::stop_graph_streaming(int connFd, bool *loop_exit_p) {
-            std::string message1 = "Graph ID?";
-            int resultWr = write(connFd, message1.c_str(), message1.length());
+            std::string graphIdPrompt = "Graph ID?";
+            int resultWr = write(connFd, graphIdPrompt.c_str(), graphIdPrompt.length());
             if (resultWr < 0) {
                 frontend_logger.error("Error writing to socket");
                 *loop_exit_p = true;
@@ -7033,16 +7033,16 @@ static std::string format_local_timestamp(std::time_t timePoint) {
                 }
                 if (*(it->second)) {
                     frontend_logger.error("Timeout: The stop flag was not reverted in time");
-                    std::string message3 = "Failed to stop the process";
-                    int resultWr = write(connFd, message3.c_str(), message3.length());
+                    std::string stopFailureMessage = "Failed to stop the process";
+                    int resultWr = write(connFd, stopFailureMessage.c_str(), stopFailureMessage.length());
                 }
                 int result_wr = write(connFd, DONE.c_str(), FRONTEND_COMMAND_LENGTH);
                 std::string sqlStatement =
                     "UPDATE graph SET kg_construction_status = 'paused'  WHERE idgraph = " + userResS;
 
     } else {
-        std::string message2 = "Graph Id not Found";
-        int resultWr = write(connFd, message2.c_str(), message2.length());
+        std::string graphNotFoundMessage = "Graph Id not Found";
+        int resultWr = write(connFd, graphNotFoundMessage.c_str(), graphNotFoundMessage.length());
     }
 }
 
