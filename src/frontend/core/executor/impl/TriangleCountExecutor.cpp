@@ -1926,7 +1926,8 @@ static int distributeTasksToWorkers(
                 int taskIndex = partitionCount;
                 collector.intermResThread.push_back(0);
 
-                std::map<std::string, std::string, std::less<>> *combinationWorkerMapPtr = &taskCtx.combinationWorkerMap;
+                std::map<std::string, std::string, std::less<>> *combinationWorkerMapPtr =
+                    &taskCtx.combinationWorkerMap;
                 std::unordered_map<long, std::unordered_map<long, std::unordered_set<long>>> *triangleTreePtr =
                     &taskCtx.triangleTree;
                 std::mutex *triangleTreeMutexPtr = &taskCtx.triangleTreeMutex;
@@ -1950,7 +1951,8 @@ static int distributeTasksToWorkers(
                             combinationWorkerMapPtr, triangleTreePtr, triangleTreeMutexPtr, masterTraceContextForTask);
                 }));
             } else {
-                std::map<std::string, std::string, std::less<>> *combinationWorkerMapPtr = &taskCtx.combinationWorkerMap;
+                std::map<std::string, std::string, std::less<>> *combinationWorkerMapPtr =
+                    &taskCtx.combinationWorkerMap;
                 std::unordered_map<long, std::unordered_map<long, std::unordered_set<long>>> *triangleTreePtr =
                     &taskCtx.triangleTree;
                 std::mutex *triangleTreeMutexPtr = &taskCtx.triangleTreeMutex;

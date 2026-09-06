@@ -7085,7 +7085,8 @@ static void sheep_command(const std::string& masterIP, int conn_fd, SQLiteDBInte
 
     // Insert graph record into metadb
     std::time_t time = chrono::system_clock::to_time_t(chrono::system_clock::now());
-    string uploadStartTime(26, '\0');
+    constexpr size_t CTIME_BUFFER_SIZE = 26;
+    string uploadStartTime(CTIME_BUFFER_SIZE, '\0');
     ctime_r(&time, &uploadStartTime[0]);
     uploadStartTime = Utils::trim_copy(uploadStartTime);
 
